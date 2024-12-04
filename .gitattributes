@@ -1,0 +1,4 @@
+*               -text
+
+*.sh            text eol=lf
+*.csx           text
