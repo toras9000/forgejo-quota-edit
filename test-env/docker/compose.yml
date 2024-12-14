@@ -1,0 +1,37 @@
+name: forgejo-quota-script-test
+services:
+  app:
+    image: codeberg.org/forgejo/forgejo:9
+    restart: unless-stopped
+    healthcheck:
+      test: curl -f -s http://localhost:3000 || exit 1
+      start_period: 60s
+      start_interval: 3s
+      timeout: 5s
+      interval: 300s
+      retries: 3
+    ports:
+      - "9950:3000"
+      - "9952:22"
+    volumes:
+      - type: volume
+        source: forgejo-data
+        target: /data
+    environment:
+      - TZ=JST-9
+      - USER_UID=1000
+      - USER_GID=1000
+      - FORGEJO__log__LEVEL=Info
+      - FORGEJO__database__DB_TYPE=sqlite3
+      - FORGEJO__cron_0x2E_update_checker__ENABLED=false
+      - FORGEJO__server__SSH_PORT=9952
+      - FORGEJO__server__ROOT_URL=http://localhost:9950
+      - FORGEJO__webhook__ALLOWED_HOST_LIST=*
+      - FORGEJO__migrations__ALLOW_LOCALNETWORKS=true
+      - FORGEJO__quota__ENABLED=true
+    extra_hosts:
+      - testhost-gateway:host-gateway
+
+volumes:
+  forgejo-data:
+
