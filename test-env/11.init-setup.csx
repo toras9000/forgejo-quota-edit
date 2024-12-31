@@ -1,5 +1,5 @@
 #r "nuget: Lestaly, 0.69.0"
-#r "nuget: AngleSharp, 1.1.2"
+#r "nuget: AngleSharp, 1.2.0"
 #nullable enable
 using System.Threading;
 using AngleSharp;

@@ -1,4 +1,4 @@
-#r "nuget: ForgejoApiClient, 9.0.0-rev.2"
+#r "nuget: ForgejoApiClient, 9.0.0-rev.3"
 #r "nuget: Lestaly, 0.69.0"
 #r "nuget: Kokuban, 0.2.0"
 #load "../.env-helper.csx"
