@@ -1,4 +1,4 @@
-#r "nuget: Lestaly, 0.69.0"
+#r "nuget: Lestaly, 0.75.0"
 #nullable enable
 using Lestaly;
 using Lestaly.Cx;
@@ -12,7 +12,8 @@ return await Paved.RunAsync(config: c => c.PauseOn(pauseMode), action: async () 
 
     WriteLine("テスト環境のリセット ...");
     var composeFile = ThisSource.RelativeFile("./docker/compose.yml");
-    await "docker".args("compose", "--file", composeFile.FullName, "down", "--remove-orphans", "--volumes").result().success();
-    ThisSource.RelativeDirectory("./docker/volumes").DeleteRecurse();
-    await "docker".args("compose", "--file", composeFile.FullName, "up", "-d").result().success();
+    var volumeDir = ThisSource.RelativeDirectory("./docker/volumes");
+    await "docker".args("compose", "--file", composeFile, "down", "--remove-orphans", "--volumes").result().success();
+    volumeDir.DeleteRecurse();
+    await "docker".args("compose", "--file", composeFile, "up", "-d").result().success();
 });

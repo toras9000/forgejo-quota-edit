@@ -1,4 +1,4 @@
-#r "nuget: Lestaly, 0.69.0"
+#r "nuget: Lestaly, 0.75.0"
 #load "../.env-helper.csx"
 #nullable enable
 using Lestaly;
@@ -28,7 +28,7 @@ return await Paved.RunAsync(config: c => c.PauseOn(pauseMode), action: async () 
 
     WriteLine("テスト用 APIトークンの生成 ...");
     var composeFile = ThisSource.RelativeFile("./docker/compose.yml");
-    var apiToken = await "docker".args("compose", "--file", composeFile.FullName,
+    var apiToken = await "docker".args("compose", "--file", composeFile,
         "exec", "-u", "1000", "app",
         "forgejo", "admin", "user", "generate-access-token",
         "--username", settings.TargetUser,

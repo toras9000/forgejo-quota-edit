@@ -1,6 +1,6 @@
-#r "nuget: ForgejoApiClient, 9.0.0-rev.3"
+#r "nuget: ForgejoApiClient, 11.0.0-rev.1"
 #r "nuget: Kokuban, 0.2.0"
-#r "nuget: Lestaly, 0.69.0"
+#r "nuget: Lestaly, 0.75.0"
 #load ".env-helper.csx"
 #nullable enable
 using System.Runtime.CompilerServices;
@@ -108,7 +108,7 @@ return await Paved.RunAsync(async () =>
         try
         {
             // コマンド定義取得
-            var define = input.AsMemory().SelectCommand(CommandDefinitions, out var args);
+            var define = CommandDefinitions.SelectCommand(input.AsMemory(), out var args);
             if (define?.Handler == null) throw new PavedMessageException("コマンドが正しくない", PavedMessageKind.Warning);
 
             // コマンドハンドラを実行
@@ -154,10 +154,11 @@ static class CommandConstants
 }
 
 /// <summary>コマンドラインから実行するコマンドを選択する</summary>
+/// <param name="root">入力コマンドライン</param>
 /// <param name="input">入力コマンドライン</param>
 /// <param name="args">コマンドラインの引数部分</param>
 /// <returns>実行するコマンド定義</returns>
-static CommandDefine? SelectCommand(this ReadOnlyMemory<char> input, CommandDefine root, out ReadOnlyMemory<char> args)
+static CommandDefine? SelectCommand(this CommandDefine root, ReadOnlyMemory<char> input, out ReadOnlyMemory<char> args)
 {
     // コマンド定義のサブコマンドから一致する物を選択する
     static CommandDefine? matchSubCommand(CommandDefine site, ReadOnlySpan<char> token)
