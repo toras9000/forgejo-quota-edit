@@ -582,7 +582,7 @@ async ValueTask cmdGroupRuleAddAsync(ManageContext context, ReadOnlyMemory<char>
     WriteLine($"グループ '{group}' にルール '{rule}' を追加しました。");
 }
 
-/// <summary>group rule delete コマンド</summary>
+/// <summary>group rule remove コマンド</summary>
 async ValueTask cmdGroupRuleRemoveAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     // ヘルプ表示
@@ -671,7 +671,7 @@ async ValueTask cmdGroupUserRemoveAsync(ManageContext context, ReadOnlyMemory<ch
     // ヘルプ表示
     if (arguments.HasToken("--help"))
     {
-        WriteLine("group rule remove <group> <user>");
+        WriteLine("group user remove <group> <user>");
         WriteLine("    group : 削除対象グループ名");
         WriteLine("    user  : 削除するユーザ名");
         return;
@@ -696,7 +696,7 @@ async ValueTask cmdUserInfoAsync(ManageContext context, ReadOnlyMemory<char> arg
     // ヘルプ表示
     if (arguments.HasToken("--help"))
     {
-        WriteLine("user rules <user>");
+        WriteLine("user info <user>");
         WriteLine("    user : 対象ユーザ名");
         return;
     }
