@@ -21,8 +21,8 @@ var settings = new
     // 作成するユーザの定義
     Users = new CreateUserOption[]
     {
-        new(username: "test-user", email: "test@example.com", password: "test-pass", full_name: "テストユーザ"),
-        new(username: "toras9000", email: "toras9000@example.com", password: "toras9000-pass", full_name: "toras9000"),
+        new(username: "test-user", email: "test@example.com", password: "test-pass", full_name: "テストユーザ", must_change_password: false),
+        new(username: "toras9000", email: "toras9000@example.com", password: "toras9000-pass", full_name: "toras9000", must_change_password: false),
     },
 
     // 作成する組織の定義
