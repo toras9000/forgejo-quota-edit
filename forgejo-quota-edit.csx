@@ -30,6 +30,7 @@ var settings = new
 // コマンド定義
 var CommandDefinitions = new CommandDefine("root", "", Subs:
 [
+    new("subjects", "制限対象一覧", Aliases: ["s", "subject"], Handler: cmdSubjectsAsync),
     new("rule", "クォータルール関連", Aliases: ["r", "rules"], Subs:
     [
         new("list",   "  ルールリスト取得", Handler: cmdRuleListAsync, Aliases: ["l"]),
@@ -58,6 +59,7 @@ var CommandDefinitions = new CommandDefine("root", "", Subs:
     new("user", "ユーザのクォータ情報関連", Aliases: ["u", "users"], Subs:
     [
         new("info",   "  クォータ情報取得", Handler: cmdUserInfoAsync, Aliases: ["i"]),
+        new("check",  "  クォータ超過チェック", Handler: cmdUserCheckAsync, Aliases: ["i"]),
     ]),
     new("help", "コマンド一覧", Handler: cmdHelpAsync, Aliases: ["h", "?"]),
 ]);
@@ -266,6 +268,37 @@ async ValueTask cmdHelpAsync(ManageContext context, ReadOnlyMemory<char> argumen
     {
         WriteLine($"{cmd.token.PadRight(tokenWidth)} : {cmd.desc}");
     }
+}
+
+/// <summary>subjects コマンド</summary>
+async ValueTask cmdSubjectsAsync(ManageContext context, ReadOnlyMemory<char> arguments)
+{
+    // ヘルプ表示
+    if (arguments.Span.IncludeToken("--help"))
+    {
+        WriteLine("subjects");
+        WriteLine("    パラメータなし");
+        return;
+    }
+
+    // 表示
+    WriteLine("""
+    size:all                             : すべてのデータサイズ
+    size:git:all                         : Gitデータサイズ (LFSを含む)
+      size:git:lfs                       : Git LFS データサイズ
+      size:repos:all                     : リポジトリデータサイズ (LDSを含まない)
+        size:repos:public                : [NOT YET AVAILABLE] 公開リポジトリデータサイズ (LDSを含まない)
+        size:repos:private               : [NOT YET AVAILABLE] 非公開リポジトリデータサイズ (LDSを含まない)
+    size:assets:all                      : すべての追跡データサイズ
+      size:assets:attachments:all        : 添付データサイズ
+        size:assets:attachments:issues   : イシューへの添付データサイス
+        size:assets:attachments:releases : リリースへの添付データサイス(自動アーカイブを除く)
+      size:assets:artifacts              : アーティファクト(どれ？)のサイズ
+      size:assets:packages:all           : パッケージのサイズ
+    size:wiki                            : Wiki サイズ.
+    """);
+
+    await Task.CompletedTask;
 }
 
 /// <summary>rule list コマンド</summary>
@@ -658,4 +691,28 @@ async ValueTask cmdUserInfoAsync(ManageContext context, ReadOnlyMemory<char> arg
             }
         }
     }
+}
+
+/// <summary>user check コマンド</summary>
+async ValueTask cmdUserCheckAsync(ManageContext context, ReadOnlyMemory<char> arguments)
+{
+    // ヘルプ表示
+    if (arguments.Span.IncludeToken("--help"))
+    {
+        WriteLine("user check <user> <subject>");
+        WriteLine("    user    : 対象ユーザ名");
+        WriteLine("    subject : 制限対象");
+        return;
+    }
+
+    // パラメータ取得
+    var user = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new PavedMessageException($"user は必須です。"));
+    var subject = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new PavedMessageException($"subject は必須です。"));
+
+    // 情報取得・表示
+    using var userClient = context.Client.Sudo(user);
+    var quotaState = await userClient.User.CheckQuotaOverAsync(subject, context.Breaker);
+    var overState = quotaState ? "OK" : "Over";
+    WriteLine($"State: {overState}");
+
 }
