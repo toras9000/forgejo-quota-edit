@@ -1,5 +1,5 @@
 #r "nuget: Kokuban, 0.2.0"
-#r "nuget: Lestaly, 0.75.0"
+#r "nuget: Lestaly, 0.76.0"
 #nullable enable
 using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
@@ -18,7 +18,7 @@ var settings = new
     // Packages and versions to be unified and updated
     Packages = new PackageVersion[]
     {
-        new("Lestaly",                               "0.75.0"),
+        new("Lestaly",                               "0.76.0"),
         new("Kokuban",                               "0.2.0"),
         new("AngleSharp",                            "1.3.0"),
         new("ForgejoApiClient",                      "11.0.0-rev.1"),

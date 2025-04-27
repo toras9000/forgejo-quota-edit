@@ -1,6 +1,6 @@
 #r "nuget: ForgejoApiClient, 11.0.0-rev.1"
 #r "nuget: Kokuban, 0.2.0"
-#r "nuget: Lestaly, 0.75.0"
+#r "nuget: Lestaly, 0.76.0"
 #load ".env-helper.csx"
 #nullable enable
 using System.Runtime.CompilerServices;
