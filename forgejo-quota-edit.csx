@@ -3,6 +3,7 @@
 #r "nuget: Lestaly, 0.76.0"
 #load ".env-helper.csx"
 #nullable enable
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -150,7 +151,7 @@ record CommandDefine(string Token, string Description, CommandDefine[]? Subs = d
 static class CommandConstants
 {
     /// <summary>コマンドトークン区切り</summary>
-    public static char[] Separators = [' ', '\t'];
+    public static readonly char[] Separators = [' ', '\t'];
 }
 
 /// <summary>コマンドラインから実行するコマンドを選択する</summary>
@@ -209,39 +210,12 @@ static CommandDefine? SelectCommand(this CommandDefine root, ReadOnlyMemory<char
     return stage;
 }
 
-/// <summary>文字列に指定のトークンが含まれるかを判定する</summary>
-/// <param name="self">文字列</param>
-/// <param name="target">判定するトークン</param>
-/// <returns>含まれるか否か</returns>
-static bool HasToken(this ReadOnlySpan<char> self, ReadOnlySpan<char> target)
-{
-    target = target.Trim();
-    var scan = self;
-    while (!scan.IsEmpty)
-    {
-        var token = scan.TakeSkipTokenAny(out scan, CommandConstants.Separators);
-        if (token.Equals(target, StringComparison.OrdinalIgnoreCase)) return true;
-    }
-    return false;
-}
-
-/// <summary>文字列に指定のトークンが含まれるかを判定する</summary>
-/// <param name="self">文字列</param>
-/// <param name="target">判定するトークン</param>
-/// <returns>含まれるか否か</returns>
-static bool HasToken(this ReadOnlyMemory<char> self, ReadOnlySpan<char> target)
-    => self.Span.HasToken(target);
-
 /// <summary>文字列から最初のトークンを取得する</summary>
 /// <param name="self">文字列</param>
 /// <param name="target">判定するトークン</param>
 /// <returns>トークン</returns>
 static ReadOnlySpan<char> TakeArgument(this ReadOnlyMemory<char> self, out ReadOnlyMemory<char> next)
-{
-    var token = self.Span.TakeSkipTokenAny(out var after, CommandConstants.Separators);
-    next = self[^after.Length..];
-    return token;
-}
+    => self.TakeSkipTokenAny(out next, CommandConstants.Separators).Span;
 
 /// <summary>文字列からトークンリストを取得する</summary>
 /// <param name="self">文字列</param>
@@ -256,38 +230,6 @@ static List<string> TakeArgList(this ReadOnlyMemory<char> self)
         list.Add(token.ToString());
     }
     return list;
-}
-
-/// <summary>文字列を単位付きサイズ値としてパースする</summary>
-/// <param name="self">文字列</param>
-/// <returns>サイズ値</returns>
-static long ParseHumanizedSize(this ReadOnlySpan<char> self)
-{
-    var text = self.Trim();
-    if (text.IsEmpty) return default;
-
-    // 単位があれば係数に変換
-    var unitCoeff = text[^1] switch
-    {
-        'K' => 1024L,
-        'M' => 1024L * 1024L,
-        'G' => 1024L * 1024L * 1024L,
-        'T' => 1024L * 1024L * 1024L * 1024L,
-        'P' => 1024L * 1024L * 1024L * 1024L * 1024L,
-        'E' => 1024L * 1024L * 1024L * 1024L * 1024L * 1024L,
-        _ => default(long?),
-    };
-
-    // 係数があればパース値と係数を反映した値を返却
-    if (unitCoeff.HasValue)
-    {
-        var number = text[..^1].ParseNumber<long>();
-        number = checked(number * unitCoeff.Value);
-        return number;
-    }
-
-    // 係数がなければそのままパース
-    return text.ParseNumber<long>();
 }
 
 /// <summary>未実装コマンド</summary>
@@ -330,7 +272,7 @@ async ValueTask cmdHelpAsync(ManageContext context, ReadOnlyMemory<char> argumen
 async ValueTask cmdRuleListAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     // ヘルプ表示
-    if (arguments.HasToken("--help"))
+    if (arguments.Span.IncludeToken("--help"))
     {
         WriteLine("rule list [--detail]");
         WriteLine("    --detail : 含まれる制限対象を表示する");
@@ -338,7 +280,7 @@ async ValueTask cmdRuleListAsync(ManageContext context, ReadOnlyMemory<char> arg
     }
 
     // パラメータ取得
-    var detail = arguments.HasToken("--detail");
+    var detail = arguments.Span.IncludeToken("--detail");
 
     // 情報取得・表示
     var rules = await context.Client.Admin.ListQuotaRulesAsync(context.Breaker);
@@ -359,7 +301,7 @@ async ValueTask cmdRuleListAsync(ManageContext context, ReadOnlyMemory<char> arg
 async ValueTask cmdRuleInfoAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     // ヘルプ表示
-    if (arguments.HasToken("--help"))
+    if (arguments.Span.IncludeToken("--help"))
     {
         WriteLine("rule info <name>");
         WriteLine("    name : 対象ルール名称");
@@ -367,10 +309,7 @@ async ValueTask cmdRuleInfoAsync(ManageContext context, ReadOnlyMemory<char> arg
     }
 
     // パラメータ取得
-    var name = arguments.TakeArgument(out arguments).ToString();
-
-    // 検証
-    if (name.IsWhite()) throw new PavedMessageException($"{nameof(name)} は必須です。");
+    var name = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"name は必須です。"));
 
     // 情報取得・表示
     var rule = await context.Client.Admin.GetQuotaRuleAsync(name, context.Breaker);
@@ -390,7 +329,7 @@ async ValueTask cmdRuleInfoAsync(ManageContext context, ReadOnlyMemory<char> arg
 async ValueTask cmdRuleCreateAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     // ヘルプ表示
-    if (arguments.HasToken("--help"))
+    if (arguments.Span.IncludeToken("--help"))
     {
         WriteLine("rule create <name> <limit> <subject> [<subject>..]");
         WriteLine("    name    : 対象ルール名称");
@@ -400,13 +339,12 @@ async ValueTask cmdRuleCreateAsync(ManageContext context, ReadOnlyMemory<char> a
     }
 
     // パラメータ取得
-    var name = arguments.TakeArgument(out arguments).ToString();
-    var limit = arguments.TakeArgument(out arguments).ParseHumanizedSize();
+    var name = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"name は必須です。"));
+    var limit = arguments.TakeArgument(out arguments).TryParseHumanized() ?? throw new PavedMessageException($"limit を解釈できません。");
     var subjects = arguments.TakeArgList();
 
     // 検証
-    if (name.IsWhite()) throw new PavedMessageException($"{nameof(name)} は必須です。");
-    if (0 < subjects.Count) throw new PavedMessageException($"1つ以上の subject を指定する必要があります。");
+    if (subjects.Count <= 0) throw new PavedMessageException($"1つ以上の subject を指定する必要があります。");
 
     // 実行・結果表示
     var options = new CreateQuotaRuleOptions(name: name, limit: limit, subjects: subjects);
@@ -427,7 +365,7 @@ async ValueTask cmdRuleCreateAsync(ManageContext context, ReadOnlyMemory<char> a
 async ValueTask cmdRuleDeleteAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     // ヘルプ表示
-    if (arguments.HasToken("--help"))
+    if (arguments.Span.IncludeToken("--help"))
     {
         WriteLine("rule delete <name>");
         WriteLine("    name    : 対象ルール名称");
@@ -435,10 +373,7 @@ async ValueTask cmdRuleDeleteAsync(ManageContext context, ReadOnlyMemory<char> a
     }
 
     // パラメータ取得
-    var name = arguments.TakeArgument(out arguments).ToString();
-
-    // 検証
-    if (name.IsWhite()) throw new PavedMessageException($"{nameof(name)} は必須です。");
+    var name = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"name は必須です。"));
 
     // 実行・結果表示
     await context.Client.Admin.DeleteQuotaRuleAsync(name, context.Breaker);
@@ -449,7 +384,7 @@ async ValueTask cmdRuleDeleteAsync(ManageContext context, ReadOnlyMemory<char> a
 async ValueTask cmdGroupListAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     // ヘルプ表示
-    if (arguments.HasToken("--help"))
+    if (arguments.Span.IncludeToken("--help"))
     {
         WriteLine("group list [--detail]");
         WriteLine("    --detail : 含まれるルールを表示する");
@@ -457,7 +392,7 @@ async ValueTask cmdGroupListAsync(ManageContext context, ReadOnlyMemory<char> ar
     }
 
     // パラメータ取得
-    var detail = arguments.HasToken("--detail");
+    var detail = arguments.Span.IncludeToken("--detail");
 
     // 情報取得・表示
     var groups = await context.Client.Admin.ListQuotaGroupsAsync(context.Breaker);
@@ -478,7 +413,7 @@ async ValueTask cmdGroupListAsync(ManageContext context, ReadOnlyMemory<char> ar
 async ValueTask cmdGroupInfoAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     // ヘルプ表示
-    if (arguments.HasToken("--help"))
+    if (arguments.Span.IncludeToken("--help"))
     {
         WriteLine("group info <name>");
         WriteLine("    name : 対象グループ名称");
@@ -486,10 +421,7 @@ async ValueTask cmdGroupInfoAsync(ManageContext context, ReadOnlyMemory<char> ar
     }
 
     // パラメータ取得
-    var name = arguments.TakeArgument(out arguments).ToString();
-
-    // 検証
-    if (name.IsWhite()) throw new PavedMessageException($"{nameof(name)} は必須です。");
+    var name = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"name は必須です。"));
 
     // 情報取得・表示
     var group = await context.Client.Admin.GetQuotaGroupAsync(name, context.Breaker);
@@ -508,7 +440,7 @@ async ValueTask cmdGroupInfoAsync(ManageContext context, ReadOnlyMemory<char> ar
 async ValueTask cmdGroupCreateAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     // ヘルプ表示
-    if (arguments.HasToken("--help"))
+    if (arguments.Span.IncludeToken("--help"))
     {
         WriteLine("group create <name>");
         WriteLine("    name    : 対象グループ名称");
@@ -516,10 +448,7 @@ async ValueTask cmdGroupCreateAsync(ManageContext context, ReadOnlyMemory<char> 
     }
 
     // パラメータ取得
-    var name = arguments.TakeArgument(out arguments).ToString();
-
-    // 検証
-    if (name.IsWhite()) throw new PavedMessageException($"{nameof(name)} は必須です。");
+    var name = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"name は必須です。"));
 
     // 実行・結果表示
     var options = new CreateQuotaGroupOptions(name: name);
@@ -539,7 +468,7 @@ async ValueTask cmdGroupCreateAsync(ManageContext context, ReadOnlyMemory<char> 
 async ValueTask cmdGroupDeleteAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     // ヘルプ表示
-    if (arguments.HasToken("--help"))
+    if (arguments.Span.IncludeToken("--help"))
     {
         WriteLine("group delete <name>");
         WriteLine("    name    : 対象グループ名称");
@@ -547,10 +476,7 @@ async ValueTask cmdGroupDeleteAsync(ManageContext context, ReadOnlyMemory<char> 
     }
 
     // パラメータ取得
-    var name = arguments.TakeArgument(out arguments).ToString();
-
-    // 検証
-    if (name.IsWhite()) throw new PavedMessageException($"{nameof(name)} は必須です。");
+    var name = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"name は必須です。"));
 
     // 実行・結果表示
     await context.Client.Admin.DeleteQuotaGroupAsync(name, context.Breaker);
@@ -561,7 +487,7 @@ async ValueTask cmdGroupDeleteAsync(ManageContext context, ReadOnlyMemory<char> 
 async ValueTask cmdGroupRuleAddAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     // ヘルプ表示
-    if (arguments.HasToken("--help"))
+    if (arguments.Span.IncludeToken("--help"))
     {
         WriteLine("group rule add <group> <rule>");
         WriteLine("    group : 追加先グループ名");
@@ -570,12 +496,8 @@ async ValueTask cmdGroupRuleAddAsync(ManageContext context, ReadOnlyMemory<char>
     }
 
     // パラメータ取得
-    var group = arguments.TakeArgument(out arguments).ToString();
-    var rule = arguments.TakeArgument(out arguments).ToString();
-
-    // 検証
-    if (group.IsWhite()) throw new PavedMessageException($"{nameof(group)} は必須です。");
-    if (rule.IsWhite()) throw new PavedMessageException($"{nameof(rule)} は必須です。");
+    var group = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"group は必須です。"));
+    var rule = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"rule は必須です。"));
 
     // 情報取得・表示
     await context.Client.Admin.AddQuotaGroupRuleAsync(group, rule, context.Breaker);
@@ -586,7 +508,7 @@ async ValueTask cmdGroupRuleAddAsync(ManageContext context, ReadOnlyMemory<char>
 async ValueTask cmdGroupRuleRemoveAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     // ヘルプ表示
-    if (arguments.HasToken("--help"))
+    if (arguments.Span.IncludeToken("--help"))
     {
         WriteLine("group rule remove <group> <rule>");
         WriteLine("    group : 削除対象グループ名");
@@ -595,12 +517,8 @@ async ValueTask cmdGroupRuleRemoveAsync(ManageContext context, ReadOnlyMemory<ch
     }
 
     // パラメータ取得
-    var group = arguments.TakeArgument(out arguments).ToString();
-    var rule = arguments.TakeArgument(out arguments).ToString();
-
-    // 検証
-    if (group.IsWhite()) throw new PavedMessageException($"{nameof(group)} は必須です。");
-    if (rule.IsWhite()) throw new PavedMessageException($"{nameof(rule)} は必須です。");
+    var group = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"group は必須です。"));
+    var rule = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"rule は必須です。"));
 
     // 情報取得・表示
     await context.Client.Admin.RemoveQuotaGroupRuleAsync(group, rule, context.Breaker);
@@ -611,7 +529,7 @@ async ValueTask cmdGroupRuleRemoveAsync(ManageContext context, ReadOnlyMemory<ch
 async ValueTask cmdGroupUserListAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     // ヘルプ表示
-    if (arguments.HasToken("--help"))
+    if (arguments.Span.IncludeToken("--help"))
     {
         WriteLine("group user list <group>");
         WriteLine("    group : 対象グループ名");
@@ -619,10 +537,7 @@ async ValueTask cmdGroupUserListAsync(ManageContext context, ReadOnlyMemory<char
     }
 
     // パラメータ取得
-    var group = arguments.TakeArgument(out arguments).ToString();
-
-    // 検証
-    if (group.IsWhite()) throw new PavedMessageException($"{nameof(group)} は必須です。");
+    var group = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"group は必須です。"));
 
     // 情報取得・表示
     var users = await context.Client.Admin.ListQuotaGroupUsersAsync(group, context.Breaker);
@@ -644,7 +559,7 @@ async ValueTask cmdGroupUserListAsync(ManageContext context, ReadOnlyMemory<char
 async ValueTask cmdGroupUserAddAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     // ヘルプ表示
-    if (arguments.HasToken("--help"))
+    if (arguments.Span.IncludeToken("--help"))
     {
         WriteLine("group user add <group> <user>");
         WriteLine("    group : 追加先グループ名");
@@ -653,12 +568,8 @@ async ValueTask cmdGroupUserAddAsync(ManageContext context, ReadOnlyMemory<char>
     }
 
     // パラメータ取得
-    var group = arguments.TakeArgument(out arguments).ToString();
-    var user = arguments.TakeArgument(out arguments).ToString();
-
-    // 検証
-    if (group.IsWhite()) throw new PavedMessageException($"{nameof(group)} は必須です。");
-    if (user.IsWhite()) throw new PavedMessageException($"{nameof(user)} は必須です。");
+    var group = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"group は必須です。"));
+    var user = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"user は必須です。"));
 
     // 情報取得・表示
     await context.Client.Admin.AddQuotaGroupUserAsync(group, user, context.Breaker);
@@ -669,7 +580,7 @@ async ValueTask cmdGroupUserAddAsync(ManageContext context, ReadOnlyMemory<char>
 async ValueTask cmdGroupUserRemoveAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     // ヘルプ表示
-    if (arguments.HasToken("--help"))
+    if (arguments.Span.IncludeToken("--help"))
     {
         WriteLine("group user remove <group> <user>");
         WriteLine("    group : 削除対象グループ名");
@@ -678,12 +589,8 @@ async ValueTask cmdGroupUserRemoveAsync(ManageContext context, ReadOnlyMemory<ch
     }
 
     // パラメータ取得
-    var group = arguments.TakeArgument(out arguments).ToString();
-    var user = arguments.TakeArgument(out arguments).ToString();
-
-    // 検証
-    if (group.IsWhite()) throw new PavedMessageException($"{nameof(group)} は必須です。");
-    if (user.IsWhite()) throw new PavedMessageException($"{nameof(user)} は必須です。");
+    var group = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"group は必須です。"));
+    var user = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"user は必須です。"));
 
     // 情報取得・表示
     await context.Client.Admin.RemoveQuotaGroupUserAsync(group, user, context.Breaker);
@@ -694,7 +601,7 @@ async ValueTask cmdGroupUserRemoveAsync(ManageContext context, ReadOnlyMemory<ch
 async ValueTask cmdUserInfoAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     // ヘルプ表示
-    if (arguments.HasToken("--help"))
+    if (arguments.Span.IncludeToken("--help"))
     {
         WriteLine("user info <user>");
         WriteLine("    user : 対象ユーザ名");
