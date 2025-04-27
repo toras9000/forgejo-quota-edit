@@ -10,4 +10,5 @@ await Paved.RunAsync(config: c => c.AnyPause(), action: async () =>
     await "dotnet".args("script", ThisSource.RelativeFile("11.init-setup.csx"), "--", "--no-interact").echo().result().success();
     await "dotnet".args("script", ThisSource.RelativeFile("12.generate-api-key.csx"), "--", "--no-interact").echo().result().success();
     await "dotnet".args("script", ThisSource.RelativeFile("13.create-principals.csx"), "--", "--no-interact").echo().result().success();
+    await "dotnet".args("script", ThisSource.RelativeFile("14.create-quota.csx"), "--", "--no-interact").echo().result().success();
 });

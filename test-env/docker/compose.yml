@@ -29,7 +29,7 @@ services:
       - FORGEJO__webhook__ALLOWED_HOST_LIST=*
       - FORGEJO__migrations__ALLOW_LOCALNETWORKS=true
       - FORGEJO__quota__ENABLED=true
-      - FORGEJO__quota_0x2E_default__TOTAL=100M
+      - FORGEJO__quota__DEFAULT_GROUPS=default-group
     extra_hosts:
       - testhost-gateway:host-gateway
 
