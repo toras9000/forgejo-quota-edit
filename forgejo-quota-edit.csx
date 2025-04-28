@@ -58,8 +58,19 @@ var CommandDefinitions = new CommandDefine("root", "", Subs:
     ]),
     new("user", "ユーザのクォータ情報関連", Aliases: ["u", "users"], Subs:
     [
-        new("info",   "  クォータ情報取得", Handler: cmdUserInfoAsync, Aliases: ["i"]),
-        new("check",  "  クォータ超過チェック", Handler: cmdUserCheckAsync, Aliases: ["i"]),
+        new("info",        "  クォータ情報取得", Handler: cmdUserInfoAsync, Aliases: ["i"]),
+        new("check",       "  クォータ超過チェック", Handler: cmdUserCheckAsync, Aliases: ["i"]),
+        new("packages",    "  パッケージのクォータ使用量", Handler: cmdUserPackagesAsync, Aliases: ["i"]),
+        new("attachments", "  添付データのクォータ使用量", Handler: cmdUserAttachmentsAsync, Aliases: ["i"]),
+        new("artifacts",   "  関連データのクォータ使用量", Handler: cmdUserArtifactsAsync, Aliases: ["i"]),
+    ]),
+    new("org", "組織のクォータ情報関連", Aliases: ["u", "users"], Subs:
+    [
+        new("info",        "  クォータ情報取得", Handler: cmdOrgInfoAsync, Aliases: ["i"]),
+        new("check",       "  クォータ超過チェック", Handler: cmdOrgCheckAsync, Aliases: ["i"]),
+        new("packages",    "  パッケージのクォータ使用量", Handler: cmdOrgPackagesAsync, Aliases: ["i"]),
+        new("attachments", "  添付データのクォータ使用量", Handler: cmdOrgAttachmentsAsync, Aliases: ["i"]),
+        new("artifacts",   "  関連データのクォータ使用量", Handler: cmdOrgArtifactsAsync, Aliases: ["i"]),
     ]),
     new("help", "コマンド一覧", Handler: cmdHelpAsync, Aliases: ["h", "?"]),
 ]);
@@ -642,10 +653,7 @@ async ValueTask cmdUserInfoAsync(ManageContext context, ReadOnlyMemory<char> arg
     }
 
     // パラメータ取得
-    var user = arguments.TakeArgument(out arguments).ToString();
-
-    // 検証
-    if (user.IsWhite()) throw new PavedMessageException($"{nameof(user)} は必須です。");
+    var user = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"user は必須です。"));
 
     // 情報取得・表示
     var info = await context.Client.Admin.GetUserQuotaRuleAsync(user, context.Breaker);
@@ -714,5 +722,233 @@ async ValueTask cmdUserCheckAsync(ManageContext context, ReadOnlyMemory<char> ar
     var quotaState = await userClient.User.CheckQuotaOverAsync(subject, context.Breaker);
     var overState = quotaState ? "OK" : "Over";
     WriteLine($"State: {overState}");
+}
 
+/// <summary>user packages コマンド</summary>
+async ValueTask cmdUserPackagesAsync(ManageContext context, ReadOnlyMemory<char> arguments)
+{
+    // ヘルプ表示
+    if (arguments.Span.IncludeToken("--help"))
+    {
+        WriteLine("user packages <user>");
+        WriteLine("    user : 対象ユーザ名");
+        return;
+    }
+
+    // パラメータ取得
+    var user = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new PavedMessageException($"user は必須です。"));
+
+    // 情報取得・表示
+    using var userClient = context.Client.Sudo(user);
+    var packages = await userClient.User.ListQuotaPackagesAsync(cancelToken: context.Breaker);
+    WriteLine($"Packages:");
+    foreach (var pkg in packages)
+    {
+        WriteLine($"  [{pkg.type}] {pkg.name}({pkg.version}) {pkg.size?.ToHumanize()}");
+    }
+    if (packages.Length <= 0) WriteLine("  Nothing");
+}
+
+/// <summary>user attachments コマンド</summary>
+async ValueTask cmdUserAttachmentsAsync(ManageContext context, ReadOnlyMemory<char> arguments)
+{
+    // ヘルプ表示
+    if (arguments.Span.IncludeToken("--help"))
+    {
+        WriteLine("user attachments <user>");
+        WriteLine("    user : 対象ユーザ名");
+        return;
+    }
+
+    // パラメータ取得
+    var user = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new PavedMessageException($"user は必須です。"));
+
+    // 情報取得・表示
+    using var userClient = context.Client.Sudo(user);
+    var attachments = await userClient.User.ListQuotaAttachmentsAsync(cancelToken: context.Breaker);
+    WriteLine($"Attachments:");
+    foreach (var attach in attachments)
+    {
+        WriteLine($"  {attach.name} {attach.size?.ToHumanize()}");
+    }
+    if (attachments.Length <= 0) WriteLine("  Nothing");
+}
+
+/// <summary>user artifacts コマンド</summary>
+async ValueTask cmdUserArtifactsAsync(ManageContext context, ReadOnlyMemory<char> arguments)
+{
+    // ヘルプ表示
+    if (arguments.Span.IncludeToken("--help"))
+    {
+        WriteLine("user artifacts <user>");
+        WriteLine("    user : 対象ユーザ名");
+        return;
+    }
+
+    // パラメータ取得
+    var user = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new PavedMessageException($"user は必須です。"));
+
+    // 情報取得・表示
+    using var userClient = context.Client.Sudo(user);
+    var artifacts = await userClient.User.ListQuotaArtifactsAsync(cancelToken: context.Breaker);
+    WriteLine($"Artifacts:");
+    foreach (var artifact in artifacts)
+    {
+        WriteLine($"  {artifact.name} {artifact.size?.ToHumanize()}");
+    }
+    if (artifacts.Length <= 0) WriteLine("  Nothing");
+}
+
+/// <summary>org info コマンド</summary>
+async ValueTask cmdOrgInfoAsync(ManageContext context, ReadOnlyMemory<char> arguments)
+{
+    // ヘルプ表示
+    if (arguments.Span.IncludeToken("--help"))
+    {
+        WriteLine("org info <org>");
+        WriteLine("    org : 対象組織名");
+        return;
+    }
+
+    // パラメータ取得
+    var org = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new Exception($"org は必須です。"));
+
+    // 情報取得・表示
+    var info = await context.Client.Organization.GetQuotaAsync(org, context.Breaker);
+    WriteLine($"Used:");
+    if (info.used?.size is var used && used != null)
+    {
+        if (used.assets != null)
+        {
+            WriteLine($"  Assets:");
+            WriteLine($"    Artifacts = {used.assets.artifacts}");
+            WriteLine($"    Attachments:");
+            if (used.assets.attachments != null)
+            {
+                WriteLine($"      Issues   = {used.assets.attachments.issues}");
+                WriteLine($"      Releases = {used.assets.attachments.releases}");
+            }
+            WriteLine($"    Packages:");
+            if (used.assets.packages != null)
+            {
+                WriteLine($"      All = {used.assets.packages.all}");
+            }
+        }
+        if (used.git != null)
+        {
+            WriteLine($"  Git:");
+            WriteLine($"    LFS = {used.git.LFS}");
+        }
+        if (used.repos != null)
+        {
+            WriteLine($"  Repos:");
+            WriteLine($"    Public  = {used.repos.@public}");
+            WriteLine($"    Private = {used.repos.@private}");
+        }
+    }
+    if (0 < info.groups?.Length)
+    {
+        foreach (var group in info.groups)
+        {
+            WriteLine($"Group: Name={group.name}");
+            foreach (var rule in group.rules ?? [])
+            {
+                WriteLine($" - Rule: Name={rule.name}, Limit={rule.limit}");
+            }
+        }
+    }
+}
+
+/// <summary>org check コマンド</summary>
+async ValueTask cmdOrgCheckAsync(ManageContext context, ReadOnlyMemory<char> arguments)
+{
+    // ヘルプ表示
+    if (arguments.Span.IncludeToken("--help"))
+    {
+        WriteLine("org check <org> <subject>");
+        WriteLine("    org     : 対象組織名");
+        WriteLine("    subject : 制限対象");
+        return;
+    }
+
+    // パラメータ取得
+    var org = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new PavedMessageException($"org は必須です。"));
+    var subject = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new PavedMessageException($"subject は必須です。"));
+
+    // 情報取得・表示
+    var quotaState = await context.Client.Organization.CheckQuotaOverAsync(org, subject, context.Breaker);
+    var overState = quotaState ? "OK" : "Over";
+    WriteLine($"State: {overState}");
+}
+
+/// <summary>org packages コマンド</summary>
+async ValueTask cmdOrgPackagesAsync(ManageContext context, ReadOnlyMemory<char> arguments)
+{
+    // ヘルプ表示
+    if (arguments.Span.IncludeToken("--help"))
+    {
+        WriteLine("org packages <org>");
+        WriteLine("    org : 対象組織名");
+        return;
+    }
+
+    // パラメータ取得
+    var org = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new PavedMessageException($"org は必須です。"));
+
+    // 情報取得・表示
+    var packages = await context.Client.Organization.ListQuotaPackagesAsync(org, cancelToken: context.Breaker);
+    WriteLine($"Packages:");
+    foreach (var pkg in packages)
+    {
+        WriteLine($"  [{pkg.type}] {pkg.name}({pkg.version}) {pkg.size?.ToHumanize()}");
+    }
+    if (packages.Length <= 0) WriteLine("  Nothing");
+}
+
+/// <summary>org attachments コマンド</summary>
+async ValueTask cmdOrgAttachmentsAsync(ManageContext context, ReadOnlyMemory<char> arguments)
+{
+    // ヘルプ表示
+    if (arguments.Span.IncludeToken("--help"))
+    {
+        WriteLine("org attachments <org>");
+        WriteLine("    org : 対象組織名");
+        return;
+    }
+
+    // パラメータ取得
+    var org = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new PavedMessageException($"org は必須です。"));
+
+    // 情報取得・表示
+    var attachments = await context.Client.Organization.ListQuotaAttachmentsAsync(org, cancelToken: context.Breaker);
+    WriteLine($"Attachments:");
+    foreach (var attach in attachments)
+    {
+        WriteLine($"  {attach.name} {attach.size?.ToHumanize()}");
+    }
+    if (attachments.Length <= 0) WriteLine("  Nothing");
+}
+
+/// <summary>org artifacts コマンド</summary>
+async ValueTask cmdOrgArtifactsAsync(ManageContext context, ReadOnlyMemory<char> arguments)
+{
+    // ヘルプ表示
+    if (arguments.Span.IncludeToken("--help"))
+    {
+        WriteLine("org artifacts <org>");
+        WriteLine("    org : 対象組織名");
+        return;
+    }
+
+    // パラメータ取得
+    var org = arguments.TakeArgument(out arguments).ToString().ThrowIfWhite(() => new PavedMessageException($"org は必須です。"));
+
+    // 情報取得・表示
+    var artifacts = await context.Client.Organization.ListQuotaArtifactsAsync(org, cancelToken: context.Breaker);
+    WriteLine($"Artifacts:");
+    foreach (var artifact in artifacts)
+    {
+        WriteLine($"  {artifact.name} {artifact.size?.ToHumanize()}");
+    }
+    if (artifacts.Length <= 0) WriteLine("  Nothing");
 }
