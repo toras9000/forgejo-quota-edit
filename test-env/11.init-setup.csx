@@ -1,11 +1,11 @@
-#r "nuget: Lestaly, 0.76.0"
 #r "nuget: AngleSharp, 1.3.0"
+#r "nuget: Lestaly, 0.76.0"
 #nullable enable
 using System.Threading;
 using AngleSharp;
 using AngleSharp.Dom;
 using AngleSharp.Html.Dom;
-using DocumentFormat.OpenXml.InkML;
+using AngleSharp.Io;
 using Lestaly;
 using Lestaly.Cx;
 
@@ -41,7 +41,9 @@ return await Paved.RunAsync(config: c => c.PauseOn(pauseMode), action: async () 
     // 初回起動(セットアップフォームが表示されるか)を判別する
     WriteLine();
     WriteLine("初期化状態の取得中 ...");
-    var config = Configuration.Default.WithDefaultLoader();
+    var requester = new DefaultHttpRequester();
+    requester.Timeout = TimeSpan.FromSeconds(3 * 60);
+    var config = Configuration.Default.With(requester).WithDefaultLoader();
     var context = BrowsingContext.New(config);
     // ページ取得。なぜか空の内容が得られる場合があるので、空の場合はリトライする
     var document = default(IDocument);
@@ -49,8 +51,8 @@ return await Paved.RunAsync(config: c => c.PauseOn(pauseMode), action: async () 
     {
         while (document == null || document.Source.Length <= 0)
         {
-            if (document != null) await Task.Delay(TimeSpan.FromMilliseconds(200));
-            document = await context.OpenAsync(settings.ServiceURL);
+            if (document != null) await Task.Delay(TimeSpan.FromMilliseconds(200), breaker.Token);
+            document = await context.OpenAsync(settings.ServiceURL, breaker.Token);
         }
     }
     // 未初期化時に存在する要素の取得を試みる
@@ -71,15 +73,20 @@ return await Paved.RunAsync(config: c => c.PauseOn(pauseMode), action: async () 
     WriteLine("初期セットアップを実施中 ...");
     var forms = container.Descendants<IHtmlFormElement>().ToArray();
     if (forms.Length != 1) throw new PavedMessageException("ページ構造が想定外");
+    var setupForm = forms[0];
+    var inputUpdateChecker = setupForm.QuerySelectorAll<IHtmlInputElement>("*").FirstOrDefault(e => e.Type == "checkbox" && e.Name == "enable_update_checker");
+    if (inputUpdateChecker == null) throw new PavedMessageException("Unexpected setup form");
+    inputUpdateChecker.IsChecked = false;
 
     // セットアップパラメータを指定して送信
-    var setupResult = await forms[0].SubmitAsync(new
+    var setupResult = await setupForm.SubmitAsync(new
     {
         admin_name = settings.Setup.AdminUser,
         admin_email = settings.Setup.AdminMail,
         admin_passwd = settings.Setup.AdminPass,
         admin_confirm_passwd = settings.Setup.AdminPass,
     });
-    var loadingElement = setupResult.GetElementById("goto-user-login") ?? throw new PavedMessageException("ページ構造が想定外");
+    var loadingElement = setupResult.GetElementById("goto-user-login");
+    if (loadingElement == null) throw new PavedMessageException("ページ構造が想定外");
     WriteLine(".. セットアップ完了");
 });

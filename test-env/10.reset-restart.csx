@@ -12,8 +12,6 @@ return await Paved.RunAsync(config: c => c.PauseOn(pauseMode), action: async () 
 
     WriteLine("テスト環境のリセット ...");
     var composeFile = ThisSource.RelativeFile("./docker/compose.yml");
-    var volumeDir = ThisSource.RelativeDirectory("./docker/volumes");
     await "docker".args("compose", "--file", composeFile, "down", "--remove-orphans", "--volumes").result().success();
-    volumeDir.DeleteRecurse();
     await "docker".args("compose", "--file", composeFile, "up", "-d").result().success();
 });

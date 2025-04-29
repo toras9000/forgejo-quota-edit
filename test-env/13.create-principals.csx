@@ -60,19 +60,19 @@ return await Paved.RunAsync(config: c => c.PauseOn(pauseMode), action: async () 
     using var signal = new SignalCancellationPeriod();
 
     WriteLine("APIトークンを読み込み ...");
-    var forgejoToken = await settings.ApiKeyFile.ScriptScrambler().LoadTokenAsync() ?? throw new Exception("トークン情報を読み取れない");
+    var forgejoToken = await settings.ApiKeyFile.ScriptScrambler().LoadTokenAsync(signal.Token) ?? throw new Exception("トークン情報を読み取れない");
     if (forgejoToken.Service.AbsoluteUri != settings.ServiceURL.AbsoluteUri) throw new Exception("保存情報が対象と合わない");
 
     WriteLine("クライアント準備 ...");
     using var forgejo = new ForgejoClient(forgejoToken.Service, forgejoToken.Token);
     var me = default(User);
-    using (var breaker = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+    using (var breaker = CancellationTokenSource.CreateLinkedTokenSource(signal.Token))
     {
         // 初期化直後はAPI呼び出しがエラーとなることがあるようなので、一定時間繰り返し呼び出しを試みる。
-        while (me == null || me.login == null)
+        breaker.CancelAfter(TimeSpan.FromSeconds(5));
+        while (me?.login == null)
         {
-            try { me = await forgejo.User.GetMeAsync(signal.Token); }
-            catch { await Task.Delay(500); }
+            try { me = await forgejo.User.GetMeAsync(breaker.Token); } catch { await Task.Delay(500, breaker.Token); }
         }
     }
 
