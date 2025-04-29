@@ -663,29 +663,29 @@ async ValueTask cmdUserInfoAsync(ManageContext context, ReadOnlyMemory<char> arg
         if (used.assets != null)
         {
             WriteLine($"  Assets:");
-            WriteLine($"    Artifacts = {used.assets.artifacts}");
+            WriteLine($"    Artifacts = {used.assets.artifacts?.ToHumanize()}");
             WriteLine($"    Attachments:");
             if (used.assets.attachments != null)
             {
-                WriteLine($"      Issues   = {used.assets.attachments.issues}");
-                WriteLine($"      Releases = {used.assets.attachments.releases}");
+                WriteLine($"      Issues   = {used.assets.attachments.issues?.ToHumanize()}");
+                WriteLine($"      Releases = {used.assets.attachments.releases?.ToHumanize()}");
             }
             WriteLine($"    Packages:");
             if (used.assets.packages != null)
             {
-                WriteLine($"      All = {used.assets.packages.all}");
+                WriteLine($"      All = {used.assets.packages.all?.ToHumanize()}");
             }
         }
         if (used.git != null)
         {
             WriteLine($"  Git:");
-            WriteLine($"    LFS = {used.git.LFS}");
+            WriteLine($"    LFS = {used.git.LFS?.ToHumanize()}");
         }
         if (used.repos != null)
         {
             WriteLine($"  Repos:");
-            WriteLine($"    Public  = {used.repos.@public}");
-            WriteLine($"    Private = {used.repos.@private}");
+            WriteLine($"    Public  = {used.repos.@public?.ToHumanize()}");
+            WriteLine($"    Private = {used.repos.@private?.ToHumanize()}");
         }
     }
     if (0 < info.groups?.Length)
@@ -695,7 +695,7 @@ async ValueTask cmdUserInfoAsync(ManageContext context, ReadOnlyMemory<char> arg
             WriteLine($"Group: Name={group.name}");
             foreach (var rule in group.rules ?? [])
             {
-                WriteLine($" - Rule: Name={rule.name}, Limit={rule.limit}");
+                WriteLine($" - Rule: Name={rule.name}, Limit={rule.limit?.ToHumanize()}");
             }
         }
     }
@@ -821,29 +821,29 @@ async ValueTask cmdOrgInfoAsync(ManageContext context, ReadOnlyMemory<char> argu
         if (used.assets != null)
         {
             WriteLine($"  Assets:");
-            WriteLine($"    Artifacts = {used.assets.artifacts}");
+            WriteLine($"    Artifacts = {used.assets.artifacts?.ToHumanize()}");
             WriteLine($"    Attachments:");
             if (used.assets.attachments != null)
             {
-                WriteLine($"      Issues   = {used.assets.attachments.issues}");
-                WriteLine($"      Releases = {used.assets.attachments.releases}");
+                WriteLine($"      Issues   = {used.assets.attachments.issues?.ToHumanize()}");
+                WriteLine($"      Releases = {used.assets.attachments.releases?.ToHumanize()}");
             }
             WriteLine($"    Packages:");
             if (used.assets.packages != null)
             {
-                WriteLine($"      All = {used.assets.packages.all}");
+                WriteLine($"      All = {used.assets.packages.all?.ToHumanize()}");
             }
         }
         if (used.git != null)
         {
             WriteLine($"  Git:");
-            WriteLine($"    LFS = {used.git.LFS}");
+            WriteLine($"    LFS = {used.git.LFS?.ToHumanize()}");
         }
         if (used.repos != null)
         {
             WriteLine($"  Repos:");
-            WriteLine($"    Public  = {used.repos.@public}");
-            WriteLine($"    Private = {used.repos.@private}");
+            WriteLine($"    Public  = {used.repos.@public?.ToHumanize()}");
+            WriteLine($"    Private = {used.repos.@private?.ToHumanize()}");
         }
     }
     if (0 < info.groups?.Length)
@@ -853,7 +853,7 @@ async ValueTask cmdOrgInfoAsync(ManageContext context, ReadOnlyMemory<char> argu
             WriteLine($"Group: Name={group.name}");
             foreach (var rule in group.rules ?? [])
             {
-                WriteLine($" - Rule: Name={rule.name}, Limit={rule.limit}");
+                WriteLine($" - Rule: Name={rule.name}, Limit={rule.limit?.ToHumanize()}");
             }
         }
     }
