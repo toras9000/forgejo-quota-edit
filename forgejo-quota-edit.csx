@@ -297,7 +297,7 @@ async ValueTask cmdSubjectsAsync(ManageContext context, ReadOnlyMemory<char> arg
     size:all                             : すべてのデータサイズ
     size:git:all                         : Gitデータサイズ (LFSを含む)
       size:git:lfs                       : Git LFS データサイズ
-      size:repos:all                     : リポジトリデータサイズ (LDSを含まない)
+    size:repos:all                       : リポジトリデータサイズ (LDSを含まない)
         size:repos:public                : [NOT YET AVAILABLE] 公開リポジトリデータサイズ (LDSを含まない)
         size:repos:private               : [NOT YET AVAILABLE] 非公開リポジトリデータサイズ (LDSを含まない)
     size:assets:all                      : すべての追跡データサイズ
@@ -306,7 +306,7 @@ async ValueTask cmdSubjectsAsync(ManageContext context, ReadOnlyMemory<char> arg
         size:assets:attachments:releases : リリースへの添付データサイス(自動アーカイブを除く)
       size:assets:artifacts              : アーティファクト(どれ？)のサイズ
       size:assets:packages:all           : パッケージのサイズ
-    size:wiki                            : Wiki サイズ.
+      size:assets:wiki                   : Wiki サイズ.
     """);
 
     await Task.CompletedTask;
