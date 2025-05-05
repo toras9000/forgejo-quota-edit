@@ -1,9 +1,9 @@
-#r "nuget: Lestaly, 0.76.0"
+#r "nuget: Lestaly, 0.79.0"
 #nullable enable
 using Lestaly;
 using Lestaly.Cx;
 
-await Paved.RunAsync(config: c => c.AnyPause(), action: async () =>
+return await Paved.ProceedAsync(async () =>
 {
     using var outenc = ConsoleWig.OutputEncodingPeriod(Encoding.UTF8);
     await "dotnet".args("script", ThisSource.RelativeFile("10.reset-restart.csx"), "--", "--no-interact").echo().result().success();

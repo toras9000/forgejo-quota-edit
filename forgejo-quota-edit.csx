@@ -1,6 +1,6 @@
 #r "nuget: ForgejoApiClient, 11.0.0-rev.1"
 #r "nuget: Kokuban, 0.2.0"
-#r "nuget: Lestaly, 0.76.0"
+#r "nuget: Lestaly, 0.79.0"
 #load ".env-helper.csx"
 #nullable enable
 using System.Buffers;
@@ -76,7 +76,7 @@ var CommandDefinitions = new CommandDefine("root", "", Subs:
 ]);
 
 // メイン処理
-return await Paved.RunAsync(async () =>
+return await Paved.ProceedAsync(async () =>
 {
     // コンソール準備
     using var signal = new SignalCancellationPeriod();

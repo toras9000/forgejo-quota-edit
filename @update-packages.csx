@@ -1,5 +1,5 @@
 #r "nuget: Kokuban, 0.2.0"
-#r "nuget: Lestaly, 0.76.0"
+#r "nuget: Lestaly, 0.79.0"
 #nullable enable
 using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
@@ -18,14 +18,14 @@ var settings = new
     // Packages and versions to be unified and updated
     Packages = new PackageVersion[]
     {
-        new("Lestaly",                               "0.76.0"),
+        new("Lestaly",                               "0.79.0"),
         new("Kokuban",                               "0.2.0"),
         new("AngleSharp",                            "1.3.0"),
         new("ForgejoApiClient",                      "11.0.0-rev.1"),
     },
 };
 
-return await Paved.RunAsync(config: o => o.AnyPause(), action: async () =>
+return await Paved.ProceedAsync(async () =>
 {
     // Detection regular expression for package reference directives
     var detector = new Regex(@"^\s*#\s*r\s+""\s*nuget\s*:\s*(?<package>[a-zA-Z0-9_\-\.]+)(?:,| )\s*(?<version>.+)\s*""");

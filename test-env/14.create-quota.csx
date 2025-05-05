@@ -1,5 +1,5 @@
 #r "nuget: ForgejoApiClient, 11.0.0-rev.1"
-#r "nuget: Lestaly, 0.76.0"
+#r "nuget: Lestaly, 0.79.0"
 #r "nuget: Kokuban, 0.2.0"
 #load "../.env-helper.csx"
 #nullable enable
@@ -39,10 +39,7 @@ var settings = new
     },
 };
 
-var noInteract = Args.Any(a => a == "--no-interact");
-var pauseMode = noInteract ? PavedPause.None : PavedPause.Any;
-
-return await Paved.RunAsync(config: c => c.PauseOn(pauseMode), action: async () =>
+return await Paved.ProceedAsync(noPause: Args.RoughContains("--no-interact"), async () =>
 {
     using var outenc = ConsoleWig.OutputEncodingPeriod(Encoding.UTF8);
     using var signal = new SignalCancellationPeriod();

@@ -1,12 +1,9 @@
-#r "nuget: Lestaly, 0.76.0"
+#r "nuget: Lestaly, 0.79.0"
 #nullable enable
 using Lestaly;
 using Lestaly.Cx;
 
-var noInteract = Args.Any(a => a == "--no-interact");
-var pauseMode = noInteract ? PavedPause.None : PavedPause.Any;
-
-return await Paved.RunAsync(config: c => c.PauseOn(pauseMode), action: async () =>
+return await Paved.ProceedAsync(noPause: Args.RoughContains("--no-interact"), async () =>
 {
     using var outenc = ConsoleWig.OutputEncodingPeriod(Encoding.UTF8);
 
