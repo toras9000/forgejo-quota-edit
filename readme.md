@@ -1,23 +1,21 @@
 # Forgejo Quota操作補助スクリプト
 
 これは Forgejo v9.0.0 で追加された[ソフトクォータ](https://forgejo.org/docs/latest/admin/quota/)機能をAPI経由で設定参照・操作するスクリプトです。  
+厳密には file-based apps 形式のソースコードですが、ここではスクリプトと呼びます。  
 
 ## 実行環境
 
-スクリプトの実行には[dotnet-script](https://github.com/dotnet-script/dotnet-script)が必要です。  
 実行には以下の準備が必要となります。
 
-- .NET 8.0 または .NET 9.0 の SDK インストール
+- .NET 10.0 の SDK インストール
     - https://dotnet.microsoft.com/download
-- dotnet-script v1.6.0 以降のインストール
-    - `dotnet tool install -g dotnet-script`
 
 また、実行には Forgejo 管理者アカウントのAPIアクセストークンが必要です。  
 アクセストークンは `admin` APIルートに読み取りと書き込みの権限を持つ必要があります。  
 
 ## ファイル構成
 
-実行するスクリプトファイルは `forgejo-quota-edit.csx` です。  
+実行するスクリプトファイルは `forgejo-quota-edit.cs1` です。  
 その他のスクリプトファイルはそこから利用される補助的なものであり、直接実行するものではありません。  
 
 `test-env` フォルダ配下にはテスト用の docker コンテナ実行用補助ファイル群を格納しています。  
@@ -26,15 +24,17 @@
 ## 実行用の設定
 
 スクリプトは実行対象のサーバに合わせた設定を行う必要があります。  
-ファイル `forgejo-quota-edit.csx` の先頭部にある変数が設定用です。  
+ファイル `forgejo-quota-edit.cs1` の先頭部にある変数が設定用です。  
 `ServiceURL` に対象ForgejoサーバのベースURLまたはAPIベースアドレス(～/api/v1)を指定します。  
 
 ## 実行
 
-対象サーバを設定した状態で `forgejo-quota-edit.csx` を実行します。  
+対象サーバを設定した状態で `forgejo-quota-edit.cs1` を実行します。  
+確実な実行方法としては以下のようなコマンドになります。  
 ```
-dotnet script ./forgejo-quota-edit.csx
+dotnet run --file ./forgejo-quota-edit.cs1
 ```
+なお、shebang によりファイルが file-based apps であるを認識されるはずなので、`--file` フラグも `run` サブコマンドも無しに実行することも可能なはずです。  
 
 最初の実行ではAPIトークンの入力が求められるので入力します。  
 入力したトークンはファイル(デフォルトでは `.auth-forgejo-api`)に簡易スクランブルして保存されます。  

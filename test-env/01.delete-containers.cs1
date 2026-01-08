@@ -1,0 +1,11 @@
+#!/usr/bin/env -S dotnet run --file
+#:package Lestaly.General@0.114.0
+using Lestaly;
+using Lestaly.Cx;
+
+return await Paved.ProceedAsync(noPause: args.RoughContains("--no-interact"), async () =>
+{
+    Console.WriteLine("テスト環境の削除 ...");
+    var composeFile = ThisSource.RelativeFile("./docker/compose.yml");
+    await "docker".args("compose", "--file", composeFile, "down", "--remove-orphans", "--volumes").result().success();
+});

@@ -1,14 +1,14 @@
-#r "nuget: ForgejoApiClient, 11.0.0-rev.1"
-#r "nuget: Lestaly, 0.79.0"
-#r "nuget: Kokuban, 0.2.0"
-#load "../.env-helper.csx"
-#nullable enable
-using System.Threading;
+#!/usr/bin/env -S dotnet run --file
+#:package ForgejoApiClient@13.0.0-rev.2
+#:package Kokuban@0.2.0
+#:package Lestaly.General@0.114.0
+#:package RefFile@0.2.0
+#:property PublishAot=false
 using ForgejoApiClient;
 using ForgejoApiClient.Api;
 using Kokuban;
 using Lestaly;
-using Lestaly.Cx;
+[assembly: RefFile("../.env-helper.cs1")]
 
 var settings = new
 {
@@ -16,7 +16,7 @@ var settings = new
     ServiceURL = new Uri("http://localhost:9950"),
 
     // トークン保存ファイル
-    ApiKeyFile = ThisSource.RelativeFile("../.auth-forgejo-api"),
+    AdminApiKeyFile = ThisSource.RelativeFile("../.auth-forgejo-api"),
 
     // 作成するユーザの定義
     Users = new CreateUserOption[]
@@ -49,18 +49,15 @@ var settings = new
     },
 };
 
-record TeamDefine(string Org, CreateTeamOption Options);
-
-return await Paved.ProceedAsync(noPause: Args.RoughContains("--no-interact"), async () =>
+return await Paved.ProceedAsync(noPause: args.RoughContains("--no-interact"), async () =>
 {
-    using var outenc = ConsoleWig.OutputEncodingPeriod(Encoding.UTF8);
     using var signal = new SignalCancellationPeriod();
 
-    WriteLine("APIトークンを読み込み ...");
-    var forgejoToken = await settings.ApiKeyFile.ScriptScrambler().LoadTokenAsync(signal.Token) ?? throw new Exception("トークン情報を読み取れない");
+    Console.WriteLine("APIトークンを読み込み ...");
+    var forgejoToken = await settings.AdminApiKeyFile.ScriptScrambler().LoadTokenAsync(signal.Token) ?? throw new Exception("トークン情報を読み取れない");
     if (forgejoToken.Service.AbsoluteUri != settings.ServiceURL.AbsoluteUri) throw new Exception("保存情報が対象と合わない");
 
-    WriteLine("クライアント準備 ...");
+    Console.WriteLine("クライアント準備 ...");
     using var forgejo = new ForgejoClient(forgejoToken.Service, forgejoToken.Token);
     var me = default(User);
     using (var breaker = signal.Token.CreateLink(TimeSpan.FromSeconds(5)))
@@ -71,54 +68,55 @@ return await Paved.ProceedAsync(noPause: Args.RoughContains("--no-interact"), as
             try { me = await forgejo.User.GetMeAsync(breaker.Token); }
             catch { await Task.Delay(TimeSpan.FromMilliseconds(500), breaker.Token); }
         }
-        WriteLine(Chalk.Green[$"  .. User: {me.login}"]);
     }
 
-    WriteLine("ユーザの作成 ...");
+    Console.WriteLine("ユーザの作成 ...");
     foreach (var options in settings.Users)
     {
-        WriteLine($"  CreateUser: {Chalk.Blue[options.username]}");
-        Write("  .. ");
+        Console.WriteLine($"  CreateUser: {Chalk.Blue[options.username]}");
+        Console.Write("  .. ");
         try
         {
             var user = await forgejo.Admin.CreateUserAsync(options, signal.Token);
-            WriteLine(Chalk.Green["作成"]);
+            Console.WriteLine(Chalk.Green["作成"]);
         }
         catch (Exception ex)
         {
-            WriteLine(Chalk.Red[ex.Message]);
+            Console.WriteLine(Chalk.Red[ex.Message]);
         }
     }
 
-    WriteLine("組織の作成 ...");
+    Console.WriteLine("組織の作成 ...");
     foreach (var options in settings.Organizations)
     {
-        WriteLine($"  CreateOrg: {Chalk.Blue[options.username]}");
-        Write("  .. ");
+        Console.WriteLine($"  CreateOrg: {Chalk.Blue[options.username]}");
+        Console.Write("  .. ");
         try
         {
             var user = await forgejo.Admin.CreateOrganizationAsync(me.login, options, signal.Token);
-            WriteLine(Chalk.Green["作成"]);
+            Console.WriteLine(Chalk.Green["作成"]);
         }
         catch (Exception ex)
         {
-            WriteLine(Chalk.Red[ex.Message]);
+            Console.WriteLine(Chalk.Red[ex.Message]);
         }
     }
 
-    WriteLine("チームの作成 ...");
+    Console.WriteLine("チームの作成 ...");
     foreach (var define in settings.Teams)
     {
-        WriteLine($"  CreateTeam: {Chalk.Blue[define.Org]} - {Chalk.Blue[define.Options.name]}");
-        Write("  .. ");
+        Console.WriteLine($"  CreateTeam: {Chalk.Blue[define.Org]} - {Chalk.Blue[define.Options.name]}");
+        Console.Write("  .. ");
         try
         {
             var user = await forgejo.Organization.CreateTeamAsync(define.Org, define.Options, signal.Token);
-            WriteLine(Chalk.Green["作成"]);
+            Console.WriteLine(Chalk.Green["作成"]);
         }
         catch (Exception ex)
         {
-            WriteLine(Chalk.Red[ex.Message]);
+            Console.WriteLine(Chalk.Red[ex.Message]);
         }
     }
 });
+
+record TeamDefine(string Org, CreateTeamOption Options);

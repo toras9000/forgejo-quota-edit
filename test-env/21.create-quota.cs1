@@ -1,14 +1,14 @@
-#r "nuget: ForgejoApiClient, 11.0.0-rev.1"
-#r "nuget: Lestaly, 0.79.0"
-#r "nuget: Kokuban, 0.2.0"
-#load "../.env-helper.csx"
-#nullable enable
-using System.Threading;
+#!/usr/bin/env -S dotnet run --file
+#:package ForgejoApiClient@13.0.0-rev.2
+#:package Kokuban@0.2.0
+#:package Lestaly.General@0.114.0
+#:package RefFile@0.2.0
+#:property PublishAot=false
 using ForgejoApiClient;
 using ForgejoApiClient.Api;
 using Kokuban;
 using Lestaly;
-using Lestaly.Cx;
+[assembly: RefFile("../.env-helper.cs1")]
 
 var settings = new
 {
@@ -39,16 +39,15 @@ var settings = new
     },
 };
 
-return await Paved.ProceedAsync(noPause: Args.RoughContains("--no-interact"), async () =>
+return await Paved.ProceedAsync(noPause: args.RoughContains("--no-interact"), async () =>
 {
-    using var outenc = ConsoleWig.OutputEncodingPeriod(Encoding.UTF8);
     using var signal = new SignalCancellationPeriod();
 
-    WriteLine("APIトークンを読み込み ...");
+    Console.WriteLine("APIトークンを読み込み ...");
     var forgejoToken = await settings.ApiKeyFile.ScriptScrambler().LoadTokenAsync(signal.Token) ?? throw new Exception("トークン情報を読み取れない");
     if (forgejoToken.Service.AbsoluteUri != settings.ServiceURL.AbsoluteUri) throw new Exception("保存情報が対象と合わない");
 
-    WriteLine("クライアント準備 ...");
+    Console.WriteLine("クライアント準備 ...");
     using var forgejo = new ForgejoClient(forgejoToken.Service, forgejoToken.Token);
     using (var breaker = CancellationTokenSource.CreateLinkedTokenSource(signal.Token))
     {
@@ -60,15 +59,15 @@ return await Paved.ProceedAsync(noPause: Args.RoughContains("--no-interact"), as
         }
     }
 
-    WriteLine("クォータルールの作成 ...");
+    Console.WriteLine("クォータルールの作成 ...");
     var rules = (await forgejo.Admin.ListQuotaRulesAsync(signal.Token)).ToList();
     foreach (var options in settings.QuotaRules)
     {
-        WriteLine($"  QuotaRule: {Chalk.Blue[options.name!]}");
-        Write("  .. ");
+        Console.WriteLine($"  QuotaRule: {Chalk.Blue[options.name!]}");
+        Console.Write("  .. ");
         if (rules.Any(g => g.name == options.name))
         {
-            WriteLine(Chalk.Gray["既に存在する"]);
+            Console.WriteLine(Chalk.Gray["既に存在する"]);
             continue;
         }
 
@@ -76,23 +75,23 @@ return await Paved.ProceedAsync(noPause: Args.RoughContains("--no-interact"), as
         {
             var rule = await forgejo.Admin.CreateQuotaRuleAsync(options, signal.Token);
             rules.Add(rule);
-            WriteLine(Chalk.Green["作成"]);
+            Console.WriteLine(Chalk.Green["作成"]);
         }
         catch (Exception ex)
         {
-            WriteLine(Chalk.Red[ex.Message]);
+            Console.WriteLine(Chalk.Red[ex.Message]);
         }
     }
 
-    WriteLine("クォータグループの作成 ...");
+    Console.WriteLine("クォータグループの作成 ...");
     var groups = (await forgejo.Admin.ListQuotaGroupsAsync(signal.Token)).ToList();
     foreach (var options in settings.QuotaGroups)
     {
-        WriteLine($"  QuotaGroup: {Chalk.Blue[options.name!]}");
-        Write("  .. ");
+        Console.WriteLine($"  QuotaGroup: {Chalk.Blue[options.name!]}");
+        Console.Write("  .. ");
         if (groups.Any(g => g.name == options.name))
         {
-            WriteLine(Chalk.Gray["既に存在する"]);
+            Console.WriteLine(Chalk.Gray["既に存在する"]);
             continue;
         }
 
@@ -100,27 +99,27 @@ return await Paved.ProceedAsync(noPause: Args.RoughContains("--no-interact"), as
         {
             var group = await forgejo.Admin.CreateQuotaGroupAsync(options, signal.Token);
             groups.Add(group);
-            WriteLine(Chalk.Green["作成"]);
+            Console.WriteLine(Chalk.Green["作成"]);
         }
         catch (Exception ex)
         {
-            WriteLine(Chalk.Red[ex.Message]);
+            Console.WriteLine(Chalk.Red[ex.Message]);
         }
     }
 
-    WriteLine("クォータグループの割当 ...");
+    Console.WriteLine("クォータグループの割当 ...");
     foreach (var assign in settings.UserAssigns)
     {
-        WriteLine($"  Assign: {Chalk.Blue[assign.Group]} to {Chalk.Blue[assign.User]}");
-        Write("  .. ");
+        Console.WriteLine($"  Assign: {Chalk.Blue[assign.Group]} to {Chalk.Blue[assign.User]}");
+        Console.Write("  .. ");
         try
         {
             await forgejo.Admin.AddQuotaGroupUserAsync(assign.Group, assign.User, signal.Token);
-            WriteLine(Chalk.Green["割当"]);
+            Console.WriteLine(Chalk.Green["割当"]);
         }
         catch (Exception ex)
         {
-            WriteLine(Chalk.Red[ex.Message]);
+            Console.WriteLine(Chalk.Red[ex.Message]);
         }
     }
 

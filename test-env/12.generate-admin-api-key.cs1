@@ -1,0 +1,46 @@
+#!/usr/bin/env -S dotnet run --file
+#:package Lestaly.General@0.114.0
+#:package RefFile@0.2.0
+#:property PublishAot=false
+using Lestaly;
+using Lestaly.Cx;
+[assembly: RefFile("../.env-helper.cs1")]
+
+var settings = new
+{
+    // サービスのURL
+    ServiceURL = new Uri("http://localhost:9950"),
+
+    // composeファイル
+    ComposeFile = ThisSource.RelativeFile("./docker/compose.yml"),
+
+    // forgejo コンテナサービス名
+    ForgejoServiceName = "app",
+
+    // トークン生成対象ユーザ名
+    TargetUser = "forgejo-admin",
+
+    // トークン名
+    TokenName = "quota-test-token",
+
+    // トークン保存ファイル
+    ApiKeyFile = ThisSource.RelativeFile("../.auth-forgejo-api"),
+};
+
+return await Paved.ProceedAsync(noPause: args.RoughContains("--no-interact"), async () =>
+{
+    Console.WriteLine("テスト用 APIトークンの生成 ...");
+    var apiToken = await "docker".args("compose", "--file", settings.ComposeFile,
+        "exec", "-u", "1000", settings.ForgejoServiceName,
+        "forgejo", "admin", "user", "generate-access-token",
+            "--username", settings.TargetUser,
+            "--token-name", settings.TokenName,
+            "--scopes", "all",
+            "--raw"
+    ).silent().result().success().output(trim: true);
+
+    Console.WriteLine("トークンをファイルに保存 ...");
+    await settings.ApiKeyFile.ScriptScrambler().SaveTokenAsync(settings.ServiceURL, apiToken);
+
+    Console.WriteLine("完了");
+});

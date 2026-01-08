@@ -1,17 +1,15 @@
-#r "nuget: ForgejoApiClient, 11.0.0-rev.1"
-#r "nuget: Kokuban, 0.2.0"
-#r "nuget: Lestaly, 0.79.0"
-#load ".env-helper.csx"
-#nullable enable
+#!/usr/bin/env -S dotnet run --file
+#:package ForgejoApiClient@13.0.0-rev.2
+#:package Kokuban@0.2.0
+#:package Lestaly.General@0.114.0
+#:package RefFile@0.2.0
+#:property PublishAot=false
 using System.Buffers;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Threading;
 using ForgejoApiClient;
 using ForgejoApiClient.Api;
 using Kokuban;
 using Lestaly;
-using Lestaly.Cx;
+[assembly: RefFile(".env-helper.cs1")]
 
 // 設定
 var settings = new
@@ -28,7 +26,7 @@ var settings = new
 };
 
 // コマンド定義
-var CommandDefinitions = new CommandDefine("root", "", Subs:
+CommandDefine makeCommandDefines() => new CommandDefine("root", "", Subs:
 [
     new("subjects", "制限対象一覧", Aliases: ["s", "subject"], Handler: cmdSubjectsAsync),
     new("rule", "クォータルール関連", Aliases: ["r", "rules"], Subs:
@@ -59,18 +57,18 @@ var CommandDefinitions = new CommandDefine("root", "", Subs:
     new("user", "ユーザのクォータ情報関連", Aliases: ["u", "users"], Subs:
     [
         new("info",        "  クォータ情報取得", Handler: cmdUserInfoAsync, Aliases: ["i"]),
-        new("check",       "  クォータ超過チェック", Handler: cmdUserCheckAsync, Aliases: ["i"]),
-        new("packages",    "  パッケージのクォータ使用量", Handler: cmdUserPackagesAsync, Aliases: ["i"]),
-        new("attachments", "  添付データのクォータ使用量", Handler: cmdUserAttachmentsAsync, Aliases: ["i"]),
-        new("artifacts",   "  関連データのクォータ使用量", Handler: cmdUserArtifactsAsync, Aliases: ["i"]),
+        new("check",       "  クォータ超過チェック", Handler: cmdUserCheckAsync, Aliases: ["c"]),
+        new("packages",    "  パッケージのクォータ使用量", Handler: cmdUserPackagesAsync),
+        new("attachments", "  添付データのクォータ使用量", Handler: cmdUserAttachmentsAsync),
+        new("artifacts",   "  関連データのクォータ使用量", Handler: cmdUserArtifactsAsync),
     ]),
-    new("org", "組織のクォータ情報関連", Aliases: ["u", "users"], Subs:
+    new("org", "組織のクォータ情報関連", Aliases: ["o"], Subs:
     [
         new("info",        "  クォータ情報取得", Handler: cmdOrgInfoAsync, Aliases: ["i"]),
-        new("check",       "  クォータ超過チェック", Handler: cmdOrgCheckAsync, Aliases: ["i"]),
-        new("packages",    "  パッケージのクォータ使用量", Handler: cmdOrgPackagesAsync, Aliases: ["i"]),
-        new("attachments", "  添付データのクォータ使用量", Handler: cmdOrgAttachmentsAsync, Aliases: ["i"]),
-        new("artifacts",   "  関連データのクォータ使用量", Handler: cmdOrgArtifactsAsync, Aliases: ["i"]),
+        new("check",       "  クォータ超過チェック", Handler: cmdOrgCheckAsync, Aliases: ["c"]),
+        new("packages",    "  パッケージのクォータ使用量", Handler: cmdOrgPackagesAsync),
+        new("attachments", "  添付データのクォータ使用量", Handler: cmdOrgAttachmentsAsync),
+        new("artifacts",   "  関連データのクォータ使用量", Handler: cmdOrgArtifactsAsync),
     ]),
     new("help", "コマンド一覧", Handler: cmdHelpAsync, Aliases: ["h", "?"]),
 ]);
@@ -80,53 +78,66 @@ return await Paved.ProceedAsync(async () =>
 {
     // コンソール準備
     using var signal = new SignalCancellationPeriod();
-    using var outenc = ConsoleWig.OutputEncodingPeriod(Encoding.UTF8);
 
     // タイトル出力
     void WriteScriptTitle()
     {
         const string ScriptTitle = "ForgejoのQuota管理ヘルパ";
-        WriteLine(ScriptTitle);
-        WriteLine($"  Forgejo   : {settings.Forgejo.ServiceURL}");
-        WriteLine();
+        Console.WriteLine(ScriptTitle);
+        Console.WriteLine($"  Forgejo   : {settings.Forgejo.ServiceURL}");
+        Console.WriteLine();
     }
 
     // 認証情報を準備
     WriteScriptTitle();
-    WriteLine("サービス認証情報の準備");
+    Console.WriteLine("サービス認証情報の準備");
     var forgejoToken = await settings.Forgejo.ApiTokenFile.BindTokenAsync("Forgejo APIトークン", settings.Forgejo.ServiceURL, signal.Token);
-    Clear();
+    Console.Clear();
     WriteScriptTitle();
 
     // APIクライアントを準備
-    WriteLine("Forgejo クライアントの生成 ...");
+    Console.WriteLine("Forgejo クライアントの生成 ...");
     using var forgejo = new ForgejoClient(forgejoToken.Service, forgejoToken.Token);
     var apiUser = await forgejo.User.GetMeAsync(cancelToken: signal.Token);
-    WriteLine(Chalk.Gray[$"  .. User: {apiUser.login}"]);
-    WriteLine();
+    Console.WriteLine(Chalk.Gray[$"  .. User: {apiUser.login}"]);
+    Console.WriteLine();
     if (apiUser.is_admin != true) throw new PavedMessageException("APIトークンのユーザが管理者ではない。", PavedMessageKind.Warning);
 
     // 情報をまとめた実行コンテキスト情報を生成
-    var context = new ManageContext(forgejo, signal.Token);
+    var commands = makeCommandDefines();
+    var context = new ManageContext(forgejo, commands, signal.Token);
 
     // コマンド処理
-    WriteLine("コマンド入力 ('help' でコマンドリスト表示)");
+    Console.WriteLine("コマンド入力 ('help' でコマンドリスト表示)");
     while (true)
     {
         // コマンド入力
-        Write(">");
-        var input = ReadLine();
+        Console.Write(">");
+        var input = Console.ReadLine();
         if (input == null) break;
         if (input.IsWhite()) continue;
 
         try
         {
             // コマンド定義取得
-            var define = CommandDefinitions.SelectCommand(input.AsMemory(), out var args);
-            if (define?.Handler == null) throw new PavedMessageException("コマンドが正しくない", PavedMessageKind.Warning);
-
-            // コマンドハンドラを実行
-            await define.Handler.Invoke(context, args);
+            var define = commands.SelectCommand(input.AsMemory(), out var args);
+            if (define == null) throw new PavedMessageException("コマンドが正しくない", PavedMessageKind.Warning);
+            if (define.Handler == null)
+            {
+                if (define.Subs == null || define.Subs.Length <= 0) throw new PavedMessageException("コマンドが正しくない", PavedMessageKind.Warning);
+                Console.WriteLine("サブコマンド一覧：");
+                var subList = define.Subs.Select(s => (path: s.MekeCommandPath(), desc: s.Description));
+                var pathWidth = subList.Max(c => c.path.Length);
+                foreach (var subCmd in subList)
+                {
+                    Console.WriteLine($"{subCmd.path.PadRight(pathWidth)} : {subCmd.desc}");
+                }
+            }
+            else
+            {
+                // コマンドハンドラを実行
+                await define.Handler.Invoke(context, args);
+            }
         }
         catch (Exception ex)
         {
@@ -136,121 +147,20 @@ return await Paved.ProceedAsync(async () =>
                 PavedMessageKind.Warning or PavedMessageKind.Cancelled => Chalk.Yellow,
                 _ => Chalk.Red,
             };
-            WriteLine(color[ex.Message]);
+            Console.WriteLine(color[ex.Message]);
         }
-        WriteLine();
+        Console.WriteLine();
     }
 });
 
-/// <summary>実行コンテキスト情報</summary>
-/// <param name="Client">APIクライアント</param>
-/// <param name="Breaker">実行中断トークン</param>
-record ManageContext(ForgejoClient Client, CancellationToken Breaker);
-
-/// <summary>コマンドハンドラデリゲート型</summary>
-/// <param name="context">実行コンテキスト情報</param>
-/// <param name="arguments">引数文字列</param>
-delegate ValueTask AsyncCommmandHandler(ManageContext context, ReadOnlyMemory<char> arguments);
-
-/// <summary>コマンド定義</summary>
-/// <param name="Token">コマンド名</param>
-/// <param name="Description">コマンド概要</param>
-/// <param name="Subs">サブコマンド</param>
-/// <param name="Handler">コマンド処理ハンドラ</param>
-/// <param name="Aliases">コマンド名のエイリアス</param>
-record CommandDefine(string Token, string Description, CommandDefine[]? Subs = default, AsyncCommmandHandler? Handler = default, string[]? Aliases = default);
-
-/// <summary>コマンド関連の定数</summary>
-static class CommandConstants
-{
-    /// <summary>コマンドトークン区切り</summary>
-    public static readonly char[] Separators = [' ', '\t'];
-}
-
-/// <summary>コマンドラインから実行するコマンドを選択する</summary>
-/// <param name="root">入力コマンドライン</param>
-/// <param name="input">入力コマンドライン</param>
-/// <param name="args">コマンドラインの引数部分</param>
-/// <returns>実行するコマンド定義</returns>
-static CommandDefine? SelectCommand(this CommandDefine root, ReadOnlyMemory<char> input, out ReadOnlyMemory<char> args)
-{
-    // コマンド定義のサブコマンドから一致する物を選択する
-    static CommandDefine? matchSubCommand(CommandDefine site, ReadOnlySpan<char> token)
-    {
-        // サブコマンドを持たない場合は一致無し
-        if (site.Subs == null) return null;
-
-        // サブコマンドの検索
-        foreach (var sub in site.Subs)
-        {
-            // サブコマンド一致判定
-            if (token.Equals(sub.Token, StringComparison.OrdinalIgnoreCase)) return sub;
-            // エイリアスがある場合はそれに一致する物を検索
-            if (sub.Aliases == null) continue;
-            foreach (var alias in sub.Aliases)
-            {
-                if (token.Equals(alias, StringComparison.OrdinalIgnoreCase)) return sub;
-            }
-        }
-        return null;
-    }
-
-    // 最も深く一致するコマンド定義を検索
-    var stage = root;
-    var scan = input.Span;
-    while (true)
-    {
-        // コマンドラインの最初のトークンに一致する定義の取得を試みる
-        var token = scan.TakeSkipTokenAny(out var next, CommandConstants.Separators);
-        var match = matchSubCommand(stage, token);
-        if (match == null) break;
-
-        // 一致したら次へ
-        stage = match;
-        scan = next;
-    }
-
-    // 有効なコマンドエントリでなければ一致コマンド無しの返却値
-    if (stage.Handler == null)
-    {
-        args = ReadOnlyMemory<char>.Empty;
-        return null;
-    }
-
-    // コマンドラインの残りをコマンド引数として返す
-    args = input[^scan.Length..];
-
-    return stage;
-}
-
-/// <summary>文字列から最初のトークンを取得する</summary>
-/// <param name="self">文字列</param>
-/// <param name="target">判定するトークン</param>
-/// <returns>トークン</returns>
-static ReadOnlySpan<char> TakeArgument(this ReadOnlyMemory<char> self, out ReadOnlyMemory<char> next)
-    => self.TakeSkipTokenAny(out next, CommandConstants.Separators).Span;
-
-/// <summary>文字列からトークンリストを取得する</summary>
-/// <param name="self">文字列</param>
-/// <returns>トークンリスト</returns>
-static List<string> TakeArgList(this ReadOnlyMemory<char> self)
-{
-    var list = new List<string>();
-    var scan = self.Span;
-    while (!scan.IsEmpty)
-    {
-        var token = scan.TakeSkipTokenAny(out scan, CommandConstants.Separators);
-        list.Add(token.ToString());
-    }
-    return list;
-}
-
 /// <summary>未実装コマンド</summary>
+#pragma warning disable CS8321 // ローカル関数は宣言されていますが、一度も使用されていません
 async ValueTask cmdNotImplementedAsync(ManageContext context, ReadOnlyMemory<char> arguments)
 {
     await Task.CompletedTask;
-    WriteLine(Chalk.Yellow["コマンド未実装"]);
+    Console.WriteLine(Chalk.Yellow["コマンド未実装"]);
 }
+#pragma warning restore CS8321 // ローカル関数は宣言されていますが、一度も使用されていません
 
 /// <summary>help コマンド</summary>
 async ValueTask cmdHelpAsync(ManageContext context, ReadOnlyMemory<char> arguments)
@@ -273,12 +183,16 @@ async ValueTask cmdHelpAsync(ManageContext context, ReadOnlyMemory<char> argumen
     }
 
     // コマンド一覧を出力
-    var cmdList = enumCommands(level: 0, CommandDefinitions.Subs!).ToArray();
+    Console.WriteLine("コマンド一覧：");
+    var cmdList = enumCommands(level: 0, context.Commands.Subs!).ToArray();
     var tokenWidth = cmdList.Max(c => c.token.Length);
     foreach (var cmd in cmdList)
     {
-        WriteLine($"{cmd.token.PadRight(tokenWidth)} : {cmd.desc}");
+        Console.WriteLine($"{cmd.token.PadRight(tokenWidth)} : {cmd.desc}");
     }
+
+    Console.WriteLine();
+    Console.WriteLine("各コマンドのパラメータに --help を含めるとコマンドのヘルプを表示する。");
 }
 
 /// <summary>subjects コマンド</summary>
@@ -287,13 +201,13 @@ async ValueTask cmdSubjectsAsync(ManageContext context, ReadOnlyMemory<char> arg
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("subjects");
-        WriteLine("    パラメータなし");
+        Console.WriteLine("subjects");
+        Console.WriteLine("    パラメータなし");
         return;
     }
 
     // 表示
-    WriteLine("""
+    Console.WriteLine("""
     size:all                             : すべてのデータサイズ
     size:git:all                         : Gitデータサイズ (LFSを含む)
       size:git:lfs                       : Git LFS データサイズ
@@ -318,8 +232,8 @@ async ValueTask cmdRuleListAsync(ManageContext context, ReadOnlyMemory<char> arg
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("rule list [--detail]");
-        WriteLine("    --detail : 含まれる制限対象を表示する");
+        Console.WriteLine("rule list [--detail]");
+        Console.WriteLine("    --detail : 含まれる制限対象を表示する");
         return;
     }
 
@@ -330,12 +244,12 @@ async ValueTask cmdRuleListAsync(ManageContext context, ReadOnlyMemory<char> arg
     var rules = await context.Client.Admin.ListQuotaRulesAsync(context.Breaker);
     foreach (var rule in rules)
     {
-        WriteLine($"Name={rule.name}, Limit={(rule.limit ?? 0).ToHumanize()}, {rule.subjects?.Count ?? 0} subjects");
+        Console.WriteLine($"Name={rule.name}, Limit={(rule.limit ?? 0).ToHumanize()}, {rule.subjects?.Count ?? 0} subjects");
         if (detail && rule.subjects != null)
         {
             foreach (var subject in rule.subjects)
             {
-                WriteLine($"  {subject}");
+                Console.WriteLine($"  {subject}");
             }
         }
     }
@@ -347,8 +261,8 @@ async ValueTask cmdRuleInfoAsync(ManageContext context, ReadOnlyMemory<char> arg
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("rule info <name>");
-        WriteLine("    name : 対象ルール名称");
+        Console.WriteLine("rule info <name>");
+        Console.WriteLine("    name : 対象ルール名称");
         return;
     }
 
@@ -357,14 +271,14 @@ async ValueTask cmdRuleInfoAsync(ManageContext context, ReadOnlyMemory<char> arg
 
     // 情報取得・表示
     var rule = await context.Client.Admin.GetQuotaRuleAsync(name, context.Breaker);
-    WriteLine($"Name: {rule.name}");
-    WriteLine($"Limit: {(rule.limit ?? 0).ToHumanize()}");
+    Console.WriteLine($"Name: {rule.name}");
+    Console.WriteLine($"Limit: {(rule.limit ?? 0).ToHumanize()}");
     if (0 < rule.subjects?.Count)
     {
-        WriteLine($"Subjects:");
+        Console.WriteLine($"Subjects:");
         foreach (var subject in rule.subjects)
         {
-            WriteLine($" - {subject}");
+            Console.WriteLine($" - {subject}");
         }
     }
 }
@@ -375,10 +289,10 @@ async ValueTask cmdRuleCreateAsync(ManageContext context, ReadOnlyMemory<char> a
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("rule create <name> <limit> <subject> [<subject>..]");
-        WriteLine("    name    : 対象ルール名称");
-        WriteLine("    limit   : 制限サイズ");
-        WriteLine("    subject : 制限対象");
+        Console.WriteLine("rule create <name> <limit> <subject> [<subject>..]");
+        Console.WriteLine("    name    : 対象ルール名称");
+        Console.WriteLine("    limit   : 制限サイズ");
+        Console.WriteLine("    subject : 制限対象");
         return;
     }
 
@@ -393,14 +307,14 @@ async ValueTask cmdRuleCreateAsync(ManageContext context, ReadOnlyMemory<char> a
     // 実行・結果表示
     var options = new CreateQuotaRuleOptions(name: name, limit: limit, subjects: subjects);
     var rule = await context.Client.Admin.CreateQuotaRuleAsync(options, context.Breaker);
-    WriteLine($"Name: {rule.name}");
-    WriteLine($"Limit: {(rule.limit ?? 0).ToHumanize()}");
+    Console.WriteLine($"Name: {rule.name}");
+    Console.WriteLine($"Limit: {(rule.limit ?? 0).ToHumanize()}");
     if (0 < rule.subjects?.Count)
     {
-        WriteLine($"Subjects:");
+        Console.WriteLine($"Subjects:");
         foreach (var subject in rule.subjects)
         {
-            WriteLine($" - {subject}");
+            Console.WriteLine($" - {subject}");
         }
     }
 }
@@ -411,8 +325,8 @@ async ValueTask cmdRuleDeleteAsync(ManageContext context, ReadOnlyMemory<char> a
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("rule delete <name>");
-        WriteLine("    name    : 対象ルール名称");
+        Console.WriteLine("rule delete <name>");
+        Console.WriteLine("    name    : 対象ルール名称");
         return;
     }
 
@@ -421,7 +335,7 @@ async ValueTask cmdRuleDeleteAsync(ManageContext context, ReadOnlyMemory<char> a
 
     // 実行・結果表示
     await context.Client.Admin.DeleteQuotaRuleAsync(name, context.Breaker);
-    WriteLine($"ルール '{name}' を削除しました。");
+    Console.WriteLine($"ルール '{name}' を削除しました。");
 }
 
 /// <summary>group list コマンド</summary>
@@ -430,8 +344,8 @@ async ValueTask cmdGroupListAsync(ManageContext context, ReadOnlyMemory<char> ar
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("group list [--detail]");
-        WriteLine("    --detail : 含まれるルールを表示する");
+        Console.WriteLine("group list [--detail]");
+        Console.WriteLine("    --detail : 含まれるルールを表示する");
         return;
     }
 
@@ -442,12 +356,12 @@ async ValueTask cmdGroupListAsync(ManageContext context, ReadOnlyMemory<char> ar
     var groups = await context.Client.Admin.ListQuotaGroupsAsync(context.Breaker);
     foreach (var group in groups)
     {
-        WriteLine($"Name={group.name}, {group.rules?.Count ?? 0} rules");
+        Console.WriteLine($"Name={group.name}, {group.rules?.Count ?? 0} rules");
         if (detail && group.rules != null)
         {
             foreach (var rule in group.rules)
             {
-                WriteLine($"  Name={rule.name}, Limit={(rule.limit ?? 0).ToHumanize()}, {rule.subjects?.Count ?? 0} subjects");
+                Console.WriteLine($"  Name={rule.name}, Limit={(rule.limit ?? 0).ToHumanize()}, {rule.subjects?.Count ?? 0} subjects");
             }
         }
     }
@@ -459,8 +373,8 @@ async ValueTask cmdGroupInfoAsync(ManageContext context, ReadOnlyMemory<char> ar
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("group info <name>");
-        WriteLine("    name : 対象グループ名称");
+        Console.WriteLine("group info <name>");
+        Console.WriteLine("    name : 対象グループ名称");
         return;
     }
 
@@ -469,13 +383,13 @@ async ValueTask cmdGroupInfoAsync(ManageContext context, ReadOnlyMemory<char> ar
 
     // 情報取得・表示
     var group = await context.Client.Admin.GetQuotaGroupAsync(name, context.Breaker);
-    WriteLine($"Name={group.name}");
+    Console.WriteLine($"Name={group.name}");
     if (0 < group.rules?.Count)
     {
-        WriteLine($"Rules:");
+        Console.WriteLine($"Rules:");
         foreach (var rule in group.rules)
         {
-            WriteLine($" - Name={rule.name}, Limit={(rule.limit ?? 0).ToHumanize()}, {rule.subjects?.Count ?? 0} subjects");
+            Console.WriteLine($" - Name={rule.name}, Limit={(rule.limit ?? 0).ToHumanize()}, {rule.subjects?.Count ?? 0} subjects");
         }
     }
 }
@@ -486,8 +400,8 @@ async ValueTask cmdGroupCreateAsync(ManageContext context, ReadOnlyMemory<char> 
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("group create <name>");
-        WriteLine("    name    : 対象グループ名称");
+        Console.WriteLine("group create <name>");
+        Console.WriteLine("    name    : 対象グループ名称");
         return;
     }
 
@@ -497,13 +411,13 @@ async ValueTask cmdGroupCreateAsync(ManageContext context, ReadOnlyMemory<char> 
     // 実行・結果表示
     var options = new CreateQuotaGroupOptions(name: name);
     var group = await context.Client.Admin.CreateQuotaGroupAsync(options, context.Breaker);
-    WriteLine($"Name={group.name}");
+    Console.WriteLine($"Name={group.name}");
     if (0 < group.rules?.Count)
     {
-        WriteLine($"Rules:");
+        Console.WriteLine($"Rules:");
         foreach (var rule in group.rules)
         {
-            WriteLine($" - Name={rule.name}, Limit={(rule.limit ?? 0).ToHumanize()}, {rule.subjects?.Count ?? 0} subjects");
+            Console.WriteLine($" - Name={rule.name}, Limit={(rule.limit ?? 0).ToHumanize()}, {rule.subjects?.Count ?? 0} subjects");
         }
     }
 }
@@ -514,8 +428,8 @@ async ValueTask cmdGroupDeleteAsync(ManageContext context, ReadOnlyMemory<char> 
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("group delete <name>");
-        WriteLine("    name    : 対象グループ名称");
+        Console.WriteLine("group delete <name>");
+        Console.WriteLine("    name    : 対象グループ名称");
         return;
     }
 
@@ -524,7 +438,7 @@ async ValueTask cmdGroupDeleteAsync(ManageContext context, ReadOnlyMemory<char> 
 
     // 実行・結果表示
     await context.Client.Admin.DeleteQuotaGroupAsync(name, context.Breaker);
-    WriteLine($"グループ '{name}' を削除しました。");
+    Console.WriteLine($"グループ '{name}' を削除しました。");
 }
 
 /// <summary>group rule add コマンド</summary>
@@ -533,9 +447,9 @@ async ValueTask cmdGroupRuleAddAsync(ManageContext context, ReadOnlyMemory<char>
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("group rule add <group> <rule>");
-        WriteLine("    group : 追加先グループ名");
-        WriteLine("    rule  : 追加するルール名");
+        Console.WriteLine("group rule add <group> <rule>");
+        Console.WriteLine("    group : 追加先グループ名");
+        Console.WriteLine("    rule  : 追加するルール名");
         return;
     }
 
@@ -545,7 +459,7 @@ async ValueTask cmdGroupRuleAddAsync(ManageContext context, ReadOnlyMemory<char>
 
     // 情報取得・表示
     await context.Client.Admin.AddQuotaGroupRuleAsync(group, rule, context.Breaker);
-    WriteLine($"グループ '{group}' にルール '{rule}' を追加しました。");
+    Console.WriteLine($"グループ '{group}' にルール '{rule}' を追加しました。");
 }
 
 /// <summary>group rule remove コマンド</summary>
@@ -554,9 +468,9 @@ async ValueTask cmdGroupRuleRemoveAsync(ManageContext context, ReadOnlyMemory<ch
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("group rule remove <group> <rule>");
-        WriteLine("    group : 削除対象グループ名");
-        WriteLine("    rule  : 削除するルール名");
+        Console.WriteLine("group rule remove <group> <rule>");
+        Console.WriteLine("    group : 削除対象グループ名");
+        Console.WriteLine("    rule  : 削除するルール名");
         return;
     }
 
@@ -566,7 +480,7 @@ async ValueTask cmdGroupRuleRemoveAsync(ManageContext context, ReadOnlyMemory<ch
 
     // 情報取得・表示
     await context.Client.Admin.RemoveQuotaGroupRuleAsync(group, rule, context.Breaker);
-    WriteLine($"グループ '{group}' からルール '{rule}' を除去しました。");
+    Console.WriteLine($"グループ '{group}' からルール '{rule}' を除去しました。");
 }
 
 /// <summary>group user list コマンド</summary>
@@ -575,8 +489,8 @@ async ValueTask cmdGroupUserListAsync(ManageContext context, ReadOnlyMemory<char
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("group user list <group>");
-        WriteLine("    group : 対象グループ名");
+        Console.WriteLine("group user list <group>");
+        Console.WriteLine("    group : 対象グループ名");
         return;
     }
 
@@ -587,15 +501,15 @@ async ValueTask cmdGroupUserListAsync(ManageContext context, ReadOnlyMemory<char
     var users = await context.Client.Admin.ListQuotaGroupUsersAsync(group, context.Breaker);
     if (0 < users?.Length)
     {
-        WriteLine($"Users:");
+        Console.WriteLine($"Users:");
         foreach (var user in users ?? [])
         {
-            WriteLine($" - Name={user.login}");
+            Console.WriteLine($" - Name={user.login}");
         }
     }
     else
     {
-        WriteLine($"ユーザが割り当てられていません");
+        Console.WriteLine($"ユーザが割り当てられていません");
     }
 }
 
@@ -605,9 +519,9 @@ async ValueTask cmdGroupUserAddAsync(ManageContext context, ReadOnlyMemory<char>
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("group user add <group> <user>");
-        WriteLine("    group : 追加先グループ名");
-        WriteLine("    user  : 追加するユーザ名");
+        Console.WriteLine("group user add <group> <user>");
+        Console.WriteLine("    group : 追加先グループ名");
+        Console.WriteLine("    user  : 追加するユーザ名");
         return;
     }
 
@@ -617,7 +531,7 @@ async ValueTask cmdGroupUserAddAsync(ManageContext context, ReadOnlyMemory<char>
 
     // 情報取得・表示
     await context.Client.Admin.AddQuotaGroupUserAsync(group, user, context.Breaker);
-    WriteLine($"グループ '{group}' にユーザ '{user}' を追加しました。");
+    Console.WriteLine($"グループ '{group}' にユーザ '{user}' を追加しました。");
 }
 
 /// <summary>group user remove コマンド</summary>
@@ -626,9 +540,9 @@ async ValueTask cmdGroupUserRemoveAsync(ManageContext context, ReadOnlyMemory<ch
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("group user remove <group> <user>");
-        WriteLine("    group : 削除対象グループ名");
-        WriteLine("    user  : 削除するユーザ名");
+        Console.WriteLine("group user remove <group> <user>");
+        Console.WriteLine("    group : 削除対象グループ名");
+        Console.WriteLine("    user  : 削除するユーザ名");
         return;
     }
 
@@ -638,7 +552,7 @@ async ValueTask cmdGroupUserRemoveAsync(ManageContext context, ReadOnlyMemory<ch
 
     // 情報取得・表示
     await context.Client.Admin.RemoveQuotaGroupUserAsync(group, user, context.Breaker);
-    WriteLine($"グループ '{group}' からユーザ '{user}' を除去しました。");
+    Console.WriteLine($"グループ '{group}' からユーザ '{user}' を除去しました。");
 }
 
 /// <summary>user info コマンド</summary>
@@ -647,8 +561,8 @@ async ValueTask cmdUserInfoAsync(ManageContext context, ReadOnlyMemory<char> arg
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("user info <user>");
-        WriteLine("    user : 対象ユーザ名");
+        Console.WriteLine("user info <user>");
+        Console.WriteLine("    user : 対象ユーザ名");
         return;
     }
 
@@ -657,45 +571,45 @@ async ValueTask cmdUserInfoAsync(ManageContext context, ReadOnlyMemory<char> arg
 
     // 情報取得・表示
     var info = await context.Client.Admin.GetUserQuotaRuleAsync(user, context.Breaker);
-    WriteLine($"Used:");
+    Console.WriteLine($"Used:");
     if (info.used?.size is var used && used != null)
     {
         if (used.assets != null)
         {
-            WriteLine($"  Assets:");
-            WriteLine($"    Artifacts = {used.assets.artifacts?.ToHumanize()}");
-            WriteLine($"    Attachments:");
+            Console.WriteLine($"  Assets:");
+            Console.WriteLine($"    Artifacts = {used.assets.artifacts?.ToHumanize()}");
+            Console.WriteLine($"    Attachments:");
             if (used.assets.attachments != null)
             {
-                WriteLine($"      Issues   = {used.assets.attachments.issues?.ToHumanize()}");
-                WriteLine($"      Releases = {used.assets.attachments.releases?.ToHumanize()}");
+                Console.WriteLine($"      Issues   = {used.assets.attachments.issues?.ToHumanize()}");
+                Console.WriteLine($"      Releases = {used.assets.attachments.releases?.ToHumanize()}");
             }
-            WriteLine($"    Packages:");
+            Console.WriteLine($"    Packages:");
             if (used.assets.packages != null)
             {
-                WriteLine($"      All = {used.assets.packages.all?.ToHumanize()}");
+                Console.WriteLine($"      All = {used.assets.packages.all?.ToHumanize()}");
             }
         }
         if (used.git != null)
         {
-            WriteLine($"  Git:");
-            WriteLine($"    LFS = {used.git.LFS?.ToHumanize()}");
+            Console.WriteLine($"  Git:");
+            Console.WriteLine($"    LFS = {used.git.LFS?.ToHumanize()}");
         }
         if (used.repos != null)
         {
-            WriteLine($"  Repos:");
-            WriteLine($"    Public  = {used.repos.@public?.ToHumanize()}");
-            WriteLine($"    Private = {used.repos.@private?.ToHumanize()}");
+            Console.WriteLine($"  Repos:");
+            Console.WriteLine($"    Public  = {used.repos.@public?.ToHumanize()}");
+            Console.WriteLine($"    Private = {used.repos.@private?.ToHumanize()}");
         }
     }
-    if (0 < info.groups?.Length)
+    if (0 < info.groups?.Count)
     {
         foreach (var group in info.groups)
         {
-            WriteLine($"Group: Name={group.name}");
+            Console.WriteLine($"Group: Name={group.name}");
             foreach (var rule in group.rules ?? [])
             {
-                WriteLine($" - Rule: Name={rule.name}, Limit={rule.limit?.ToHumanize()}");
+                Console.WriteLine($" - Rule: Name={rule.name}, Limit={rule.limit?.ToHumanize()}");
             }
         }
     }
@@ -707,9 +621,9 @@ async ValueTask cmdUserCheckAsync(ManageContext context, ReadOnlyMemory<char> ar
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("user check <user> <subject>");
-        WriteLine("    user    : 対象ユーザ名");
-        WriteLine("    subject : 制限対象");
+        Console.WriteLine("user check <user> <subject>");
+        Console.WriteLine("    user    : 対象ユーザ名");
+        Console.WriteLine("    subject : 制限対象");
         return;
     }
 
@@ -721,7 +635,7 @@ async ValueTask cmdUserCheckAsync(ManageContext context, ReadOnlyMemory<char> ar
     using var userClient = context.Client.Sudo(user);
     var quotaState = await userClient.User.CheckQuotaOverAsync(subject, context.Breaker);
     var overState = quotaState ? "OK" : "Over";
-    WriteLine($"State: {overState}");
+    Console.WriteLine($"State: {overState}");
 }
 
 /// <summary>user packages コマンド</summary>
@@ -730,8 +644,8 @@ async ValueTask cmdUserPackagesAsync(ManageContext context, ReadOnlyMemory<char>
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("user packages <user>");
-        WriteLine("    user : 対象ユーザ名");
+        Console.WriteLine("user packages <user>");
+        Console.WriteLine("    user : 対象ユーザ名");
         return;
     }
 
@@ -741,12 +655,12 @@ async ValueTask cmdUserPackagesAsync(ManageContext context, ReadOnlyMemory<char>
     // 情報取得・表示
     using var userClient = context.Client.Sudo(user);
     var packages = await userClient.User.ListQuotaPackagesAsync(cancelToken: context.Breaker);
-    WriteLine($"Packages:");
+    Console.WriteLine($"Packages:");
     foreach (var pkg in packages)
     {
-        WriteLine($"  [{pkg.type}] {pkg.name}({pkg.version}) {pkg.size?.ToHumanize()}");
+        Console.WriteLine($"  [{pkg.type}] {pkg.name}({pkg.version}) {pkg.size?.ToHumanize()}");
     }
-    if (packages.Length <= 0) WriteLine("  Nothing");
+    if (packages.Length <= 0) Console.WriteLine("  Nothing");
 }
 
 /// <summary>user attachments コマンド</summary>
@@ -755,8 +669,8 @@ async ValueTask cmdUserAttachmentsAsync(ManageContext context, ReadOnlyMemory<ch
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("user attachments <user>");
-        WriteLine("    user : 対象ユーザ名");
+        Console.WriteLine("user attachments <user>");
+        Console.WriteLine("    user : 対象ユーザ名");
         return;
     }
 
@@ -766,12 +680,12 @@ async ValueTask cmdUserAttachmentsAsync(ManageContext context, ReadOnlyMemory<ch
     // 情報取得・表示
     using var userClient = context.Client.Sudo(user);
     var attachments = await userClient.User.ListQuotaAttachmentsAsync(cancelToken: context.Breaker);
-    WriteLine($"Attachments:");
+    Console.WriteLine($"Attachments:");
     foreach (var attach in attachments)
     {
-        WriteLine($"  {attach.name} {attach.size?.ToHumanize()}");
+        Console.WriteLine($"  {attach.name} {attach.size?.ToHumanize()}");
     }
-    if (attachments.Length <= 0) WriteLine("  Nothing");
+    if (attachments.Length <= 0) Console.WriteLine("  Nothing");
 }
 
 /// <summary>user artifacts コマンド</summary>
@@ -780,8 +694,8 @@ async ValueTask cmdUserArtifactsAsync(ManageContext context, ReadOnlyMemory<char
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("user artifacts <user>");
-        WriteLine("    user : 対象ユーザ名");
+        Console.WriteLine("user artifacts <user>");
+        Console.WriteLine("    user : 対象ユーザ名");
         return;
     }
 
@@ -791,12 +705,12 @@ async ValueTask cmdUserArtifactsAsync(ManageContext context, ReadOnlyMemory<char
     // 情報取得・表示
     using var userClient = context.Client.Sudo(user);
     var artifacts = await userClient.User.ListQuotaArtifactsAsync(cancelToken: context.Breaker);
-    WriteLine($"Artifacts:");
+    Console.WriteLine($"Artifacts:");
     foreach (var artifact in artifacts)
     {
-        WriteLine($"  {artifact.name} {artifact.size?.ToHumanize()}");
+        Console.WriteLine($"  {artifact.name} {artifact.size?.ToHumanize()}");
     }
-    if (artifacts.Length <= 0) WriteLine("  Nothing");
+    if (artifacts.Length <= 0) Console.WriteLine("  Nothing");
 }
 
 /// <summary>org info コマンド</summary>
@@ -805,8 +719,8 @@ async ValueTask cmdOrgInfoAsync(ManageContext context, ReadOnlyMemory<char> argu
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("org info <org>");
-        WriteLine("    org : 対象組織名");
+        Console.WriteLine("org info <org>");
+        Console.WriteLine("    org : 対象組織名");
         return;
     }
 
@@ -815,45 +729,45 @@ async ValueTask cmdOrgInfoAsync(ManageContext context, ReadOnlyMemory<char> argu
 
     // 情報取得・表示
     var info = await context.Client.Organization.GetQuotaAsync(org, context.Breaker);
-    WriteLine($"Used:");
+    Console.WriteLine($"Used:");
     if (info.used?.size is var used && used != null)
     {
         if (used.assets != null)
         {
-            WriteLine($"  Assets:");
-            WriteLine($"    Artifacts = {used.assets.artifacts?.ToHumanize()}");
-            WriteLine($"    Attachments:");
+            Console.WriteLine($"  Assets:");
+            Console.WriteLine($"    Artifacts = {used.assets.artifacts?.ToHumanize()}");
+            Console.WriteLine($"    Attachments:");
             if (used.assets.attachments != null)
             {
-                WriteLine($"      Issues   = {used.assets.attachments.issues?.ToHumanize()}");
-                WriteLine($"      Releases = {used.assets.attachments.releases?.ToHumanize()}");
+                Console.WriteLine($"      Issues   = {used.assets.attachments.issues?.ToHumanize()}");
+                Console.WriteLine($"      Releases = {used.assets.attachments.releases?.ToHumanize()}");
             }
-            WriteLine($"    Packages:");
+            Console.WriteLine($"    Packages:");
             if (used.assets.packages != null)
             {
-                WriteLine($"      All = {used.assets.packages.all?.ToHumanize()}");
+                Console.WriteLine($"      All = {used.assets.packages.all?.ToHumanize()}");
             }
         }
         if (used.git != null)
         {
-            WriteLine($"  Git:");
-            WriteLine($"    LFS = {used.git.LFS?.ToHumanize()}");
+            Console.WriteLine($"  Git:");
+            Console.WriteLine($"    LFS = {used.git.LFS?.ToHumanize()}");
         }
         if (used.repos != null)
         {
-            WriteLine($"  Repos:");
-            WriteLine($"    Public  = {used.repos.@public?.ToHumanize()}");
-            WriteLine($"    Private = {used.repos.@private?.ToHumanize()}");
+            Console.WriteLine($"  Repos:");
+            Console.WriteLine($"    Public  = {used.repos.@public?.ToHumanize()}");
+            Console.WriteLine($"    Private = {used.repos.@private?.ToHumanize()}");
         }
     }
-    if (0 < info.groups?.Length)
+    if (0 < info.groups?.Count)
     {
         foreach (var group in info.groups)
         {
-            WriteLine($"Group: Name={group.name}");
+            Console.WriteLine($"Group: Name={group.name}");
             foreach (var rule in group.rules ?? [])
             {
-                WriteLine($" - Rule: Name={rule.name}, Limit={rule.limit?.ToHumanize()}");
+                Console.WriteLine($" - Rule: Name={rule.name}, Limit={rule.limit?.ToHumanize()}");
             }
         }
     }
@@ -865,9 +779,9 @@ async ValueTask cmdOrgCheckAsync(ManageContext context, ReadOnlyMemory<char> arg
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("org check <org> <subject>");
-        WriteLine("    org     : 対象組織名");
-        WriteLine("    subject : 制限対象");
+        Console.WriteLine("org check <org> <subject>");
+        Console.WriteLine("    org     : 対象組織名");
+        Console.WriteLine("    subject : 制限対象");
         return;
     }
 
@@ -878,7 +792,7 @@ async ValueTask cmdOrgCheckAsync(ManageContext context, ReadOnlyMemory<char> arg
     // 情報取得・表示
     var quotaState = await context.Client.Organization.CheckQuotaOverAsync(org, subject, context.Breaker);
     var overState = quotaState ? "OK" : "Over";
-    WriteLine($"State: {overState}");
+    Console.WriteLine($"State: {overState}");
 }
 
 /// <summary>org packages コマンド</summary>
@@ -887,8 +801,8 @@ async ValueTask cmdOrgPackagesAsync(ManageContext context, ReadOnlyMemory<char> 
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("org packages <org>");
-        WriteLine("    org : 対象組織名");
+        Console.WriteLine("org packages <org>");
+        Console.WriteLine("    org : 対象組織名");
         return;
     }
 
@@ -897,12 +811,12 @@ async ValueTask cmdOrgPackagesAsync(ManageContext context, ReadOnlyMemory<char> 
 
     // 情報取得・表示
     var packages = await context.Client.Organization.ListQuotaPackagesAsync(org, cancelToken: context.Breaker);
-    WriteLine($"Packages:");
+    Console.WriteLine($"Packages:");
     foreach (var pkg in packages)
     {
-        WriteLine($"  [{pkg.type}] {pkg.name}({pkg.version}) {pkg.size?.ToHumanize()}");
+        Console.WriteLine($"  [{pkg.type}] {pkg.name}({pkg.version}) {pkg.size?.ToHumanize()}");
     }
-    if (packages.Length <= 0) WriteLine("  Nothing");
+    if (packages.Length <= 0) Console.WriteLine("  Nothing");
 }
 
 /// <summary>org attachments コマンド</summary>
@@ -911,8 +825,8 @@ async ValueTask cmdOrgAttachmentsAsync(ManageContext context, ReadOnlyMemory<cha
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("org attachments <org>");
-        WriteLine("    org : 対象組織名");
+        Console.WriteLine("org attachments <org>");
+        Console.WriteLine("    org : 対象組織名");
         return;
     }
 
@@ -921,12 +835,12 @@ async ValueTask cmdOrgAttachmentsAsync(ManageContext context, ReadOnlyMemory<cha
 
     // 情報取得・表示
     var attachments = await context.Client.Organization.ListQuotaAttachmentsAsync(org, cancelToken: context.Breaker);
-    WriteLine($"Attachments:");
+    Console.WriteLine($"Attachments:");
     foreach (var attach in attachments)
     {
-        WriteLine($"  {attach.name} {attach.size?.ToHumanize()}");
+        Console.WriteLine($"  {attach.name} {attach.size?.ToHumanize()}");
     }
-    if (attachments.Length <= 0) WriteLine("  Nothing");
+    if (attachments.Length <= 0) Console.WriteLine("  Nothing");
 }
 
 /// <summary>org artifacts コマンド</summary>
@@ -935,8 +849,8 @@ async ValueTask cmdOrgArtifactsAsync(ManageContext context, ReadOnlyMemory<char>
     // ヘルプ表示
     if (arguments.Span.IncludeToken("--help"))
     {
-        WriteLine("org artifacts <org>");
-        WriteLine("    org : 対象組織名");
+        Console.WriteLine("org artifacts <org>");
+        Console.WriteLine("    org : 対象組織名");
         return;
     }
 
@@ -945,10 +859,160 @@ async ValueTask cmdOrgArtifactsAsync(ManageContext context, ReadOnlyMemory<char>
 
     // 情報取得・表示
     var artifacts = await context.Client.Organization.ListQuotaArtifactsAsync(org, cancelToken: context.Breaker);
-    WriteLine($"Artifacts:");
+    Console.WriteLine($"Artifacts:");
     foreach (var artifact in artifacts)
     {
-        WriteLine($"  {artifact.name} {artifact.size?.ToHumanize()}");
+        Console.WriteLine($"  {artifact.name} {artifact.size?.ToHumanize()}");
     }
-    if (artifacts.Length <= 0) WriteLine("  Nothing");
+    if (artifacts.Length <= 0) Console.WriteLine("  Nothing");
+}
+
+/// <summary>実行コンテキスト情報</summary>
+/// <param name="Client">APIクライアント</param>
+/// <param name="Breaker">実行中断トークン</param>
+public record ManageContext(ForgejoClient Client, CommandDefine Commands, CancellationToken Breaker);
+
+/// <summary>コマンドハンドラデリゲート型</summary>
+/// <param name="context">実行コンテキスト情報</param>
+/// <param name="arguments">引数文字列</param>
+public delegate ValueTask AsyncCommmandHandler(ManageContext context, ReadOnlyMemory<char> arguments);
+
+/// <summary>コマンド定義</summary>
+public class CommandDefine
+{
+    /// <summary>コマンド定義コンストラクタ</summary>
+    /// <param name="Token">コマンド名</param>
+    /// <param name="Description">コマンド概要</param>
+    /// <param name="Subs">サブコマンド</param>
+    /// <param name="Handler">コマンド処理ハンドラ</param>
+    /// <param name="Aliases">コマンド名のエイリアス</param>
+    public CommandDefine(string Token, string Description, CommandDefine[]? Subs = default, AsyncCommmandHandler? Handler = default, string[]? Aliases = default)
+    {
+        this.Token = Token;
+        this.Description = Description;
+        this.Subs = Subs;
+        this.Handler = Handler;
+        this.Aliases = Aliases;
+        if (this.Subs != null)
+        {
+            foreach (var sub in this.Subs)
+            {
+                sub.Parent = this;
+            }
+        }
+    }
+
+    /// <summary>親コマンド</summary>
+    public CommandDefine? Parent { get; private set; }
+    /// <summary>コマンド名</summary>
+    public string Token { get; }
+    /// <summary>コマンド概要</summary>
+    public string Description { get; }
+    /// <summary>サブコマンド</summary>
+    public CommandDefine[]? Subs { get; }
+    /// <summary>コマンド処理ハンドラ</summary>
+    public AsyncCommmandHandler? Handler { get; }
+    /// <summary>コマンド名のエイリアス</summary>
+    public string[]? Aliases { get; }
+
+    /// <summary>コマンドパスを取得する</summary>
+    /// <returns>コマンドパス</returns>
+    public string MekeCommandPath()
+    {
+        static IEnumerable<string> walkAncestor(CommandDefine define)
+        {
+            if (define.Parent == null) yield break;
+            yield return define.Token;
+            if (define.Parent != null)
+            {
+                foreach (var ancestor in walkAncestor(define.Parent))
+                {
+                    yield return ancestor;
+                }
+            }
+        }
+
+        return walkAncestor(this).Reverse().JoinString(" ");
+    }
+}
+
+/// <summary>コマンド関連の定数</summary>
+public static class CommandConstants
+{
+    /// <summary>コマンドトークン区切り</summary>
+    public static readonly char[] Separators = [' ', '\t'];
+}
+
+public static class Extensions
+{
+    /// <summary>コマンドラインから実行するコマンドを選択する</summary>
+    /// <param name="root">入力コマンドライン</param>
+    /// <param name="input">入力コマンドライン</param>
+    /// <param name="args">コマンドラインの引数部分</param>
+    /// <returns>実行するコマンド定義</returns>
+    public static CommandDefine? SelectCommand(this CommandDefine root, ReadOnlyMemory<char> input, out ReadOnlyMemory<char> args)
+    {
+        // コマンド定義のサブコマンドから一致する物を選択する
+        static CommandDefine? matchSubCommand(CommandDefine site, ReadOnlySpan<char> token)
+        {
+            // サブコマンドを持たない場合は一致無し
+            if (site.Subs == null) return null;
+
+            // サブコマンドの検索
+            foreach (var sub in site.Subs)
+            {
+                // サブコマンド一致判定
+                if (token.Equals(sub.Token, StringComparison.OrdinalIgnoreCase)) return sub;
+                // エイリアスがある場合はそれに一致する物を検索
+                if (sub.Aliases == null) continue;
+                foreach (var alias in sub.Aliases)
+                {
+                    if (token.Equals(alias, StringComparison.OrdinalIgnoreCase)) return sub;
+                }
+            }
+            return null;
+        }
+
+        // 最も深く一致するコマンド定義を検索
+        var stage = root;
+        var scan = input.Span;
+        while (true)
+        {
+            // コマンドラインの最初のトークンに一致する定義の取得を試みる
+            var token = scan.TakeSkipTokenAny(out var next, CommandConstants.Separators);
+            var match = matchSubCommand(stage, token);
+            if (match == null) break;
+
+            // 一致したら次へ
+            stage = match;
+            scan = next.TrimStart();
+        }
+
+        // コマンドラインの残りをコマンド引数として返す
+        args = input[^scan.Length..];
+
+        return stage;
+    }
+
+    /// <summary>文字列から最初のトークンを取得する</summary>
+    /// <param name="self">文字列</param>
+    /// <param name="target">判定するトークン</param>
+    /// <returns>トークン</returns>
+    public static ReadOnlySpan<char> TakeArgument(this ReadOnlyMemory<char> self, out ReadOnlyMemory<char> next)
+          => self.TakeSkipTokenAny(out next, CommandConstants.Separators).Span;
+
+    /// <summary>文字列からトークンリストを取得する</summary>
+    /// <param name="self">文字列</param>
+    /// <returns>トークンリスト</returns>
+    public static List<string> TakeArgList(this ReadOnlyMemory<char> self)
+    {
+        var list = new List<string>();
+        var scan = self.Span;
+        while (!scan.IsEmpty)
+        {
+            var token = scan.TakeSkipTokenAny(out scan, CommandConstants.Separators);
+            list.Add(token.ToString());
+        }
+        return list;
+    }
 }

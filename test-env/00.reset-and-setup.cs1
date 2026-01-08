@@ -1,0 +1,14 @@
+#!/usr/bin/env -S dotnet run --file
+#:package Lestaly.General@0.114.0
+using Lestaly;
+using Lestaly.Cx;
+
+return await Paved.ProceedAsync(async () =>
+{
+    await "dotnet".args("run", "--file", ThisSource.RelativeFile("01.delete-containers.cs1"), "--", "--no-interact").echo().result().success();
+    await "dotnet".args("run", "--file", ThisSource.RelativeFile("02.restart-containers.cs1"), "--", "--no-interact").echo().result().success();
+    await "dotnet".args("run", "--file", ThisSource.RelativeFile("11.init-setup.cs1"), "--", "--no-interact").echo().result().success();
+    await "dotnet".args("run", "--file", ThisSource.RelativeFile("12.generate-admin-api-key.cs1"), "--", "--no-interact").echo().result().success();
+    await "dotnet".args("run", "--file", ThisSource.RelativeFile("13.create-users.cs1"), "--", "--no-interact").echo().result().success();
+    await "dotnet".args("run", "--file", ThisSource.RelativeFile("21.create-quota.cs1"), "--", "--no-interact").echo().result().success();
+});
